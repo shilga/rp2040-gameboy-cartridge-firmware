@@ -1,0 +1,20 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Flash",
+            "type": "shell",
+            "command": "/usr/bin/gdb-multiarch -q -batch -nx -ex 'target extended-remote /dev/ttypACM1' -ex 'set ELFNAME ${workspaceFolderBasename}' -x bmp-flash.scr",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "group": "build",
+            "problemMatcher": []
+        },
+    ]
+}

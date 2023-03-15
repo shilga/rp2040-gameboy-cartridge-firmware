@@ -1,0 +1,8 @@
+monitor tpwr enable
+monitor swdp_scan
+attach 1
+file ./build/rp2040-gb-cartridge.elf
+load
+compare-sections
+kill
+quit
