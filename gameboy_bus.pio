@@ -52,6 +52,45 @@ loop:
 
 
 
+.program gameboy_bus_ram
+
+public read_wrap_target:
+    jmp  y-- idle_data                          ; Y=Rnw - skip the FIFO push on write cycles (RnW=0)
+    in   x 20                                  ; shift fixed part of ARM address (held in x) into ISR and trigger auto push
+    push
+
+
+public entry_point:                                     ; *** Default Entry Point ***
+public write_wrap_target:
+idle_data:
+    mov  isr null  ; Clear ISR
+    wait 1 irq 0
+    jmp pin idle_data ; jmp back to idle if A14 is high
+    in pins 15
+    mov y isr
+    in null 18
+    in null 13  ; A13 is now at bit pos 0
+    jmp !y idle_data ; if A13 is low back to idle
+
+    in pins 1 ; shift in RD pin
+    mov y isr ; store rd pin in y
+
+    in   pins 13                     ; shift rd and A0 to A12 pins into ISR
+
+
+public read_wrap:                                       ; *** READ state machine wraps to read_wrap_target ***
+
+    jmp  !y idle_data                         ; Y=Rnw - skip the FIFO push on read cycles (RnW=1)
+    in   x 20                                  ; shift fixed part of ARM address (held in x) into ISR and trigger auto push
+    push
+
+    ;wait 1 gpio PIN_O0                         ; wait for the start of the next cycle with data buffers ENABLED
+    ;wait 0 gpio PIN_O0                         ; wait for the start of the next cycle with data buffers ENABLED
+    in   pins 8                             ; sample read data
+    in   null 24                            ; pad to 32-bit to align in LSB, and trigger auto push
+    push
+
+public write_wrap:                                      ; *** WRITE state machine wraps to write_wrap_target ***
 
 
 % c-sdk {
