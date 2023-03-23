@@ -138,12 +138,12 @@ int main() {
     vreg_set_voltage(VREG_VOLTAGE_1_20);
     sleep_ms(2);
     // set_sys_clock_khz(266000, true);
+    // sleep_ms(2);
     //  set_sys_clock_pll(vco, div1, div2);
     //  sleep_ms(2);
   }
 
   memcpy(memory, bootloader_gb, bootloader_gb_len);
-  // memcpy(memory, tetris_uncached, sizeof(memory));
 
   memset(ram_memory, 0, sizeof(ram_memory));
   // initialize RAM with information about roms
@@ -227,6 +227,7 @@ int main() {
       }
 
       memcpy(memory, games[ram_memory[0x1000]], sizeof(memory));
+      //set_x(pio1, SMC_GB_MAIN, ((unsigned)memory) >> 15);
 
       gpio_put(PIN_GB_RESET, 0);
       loaded = true;
