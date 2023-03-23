@@ -1,5 +1,6 @@
 #include <hardware/gpio.h>
 #include <hardware/pio.h>
+#include <hardware/regs/ssi.h>
 #include <hardware/timer.h>
 #include <hardware/vreg.h>
 #include <pico/bootrom.h>
@@ -11,6 +12,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+
+#include <printf/printf.h>
 
 #include <hardware/dma.h>
 
@@ -31,9 +34,13 @@
 #define PIN_GB_RESET 26
 
 #define SMC_GB_MAIN 0
-#define SMC_GB_RAM_READ 1
-#define SMC_GB_RAM_WRITE 2
-#define SMC_GB_WRITE_DATA 0
+#define SMC_GB_DETECT_A14 1
+#define SMC_GB_RAM_READ 2
+#define SMC_GB_RAM_WRITE 3
+
+#define SMC_GB_ROM_LOW 0
+#define SMC_GB_ROM_HIGH 1
+#define SMC_GB_WRITE_DATA 2
 
 #define SMC_WS2812 3
 
@@ -125,10 +132,6 @@ int main() {
   // bi_decl(bi_program_description("Sample binary"));
   // bi_decl(bi_1pin_with_name(LED_PIN, "on-board PIN"));
 
-  // dma_uart_init();
-
-  printf("Hello World!");
-
   {
     /* The value for VCO set here is meant for least power
      * consumption. */
@@ -137,11 +140,16 @@ int main() {
 
     vreg_set_voltage(VREG_VOLTAGE_1_20);
     sleep_ms(2);
-    // set_sys_clock_khz(266000, true);
-    // sleep_ms(2);
+    set_sys_clock_khz(266000, true);
+    sleep_ms(2);
     //  set_sys_clock_pll(vco, div1, div2);
     //  sleep_ms(2);
   }
+
+  dma_uart_init();
+  printf_("Hello World!\n");
+
+  printf_("SSI->BAUDR: %x\n", *((uint32_t *)(XIP_SSI_BASE + SSI_BAUDR_OFFSET)));
 
   memcpy(memory, bootloader_gb, bootloader_gb_len);
 
@@ -157,9 +165,9 @@ int main() {
   gpio_set_dir(PIN_GB_RESET, true);
   gpio_put(PIN_GB_RESET, 1);
 
-  gpio_init(28);
-  gpio_set_dir(28, true);
-  gpio_set_function(28, GPIO_FUNC_PIO1);
+  // gpio_init(28);
+  // gpio_set_dir(28, true);
+  // gpio_set_function(28, GPIO_FUNC_PIO1);
 
   for (uint pin = PIN_AD_BASE - 1; pin < PIN_AD_BASE + 25; pin++) {
     // gpio_init(pin);
@@ -180,27 +188,42 @@ int main() {
   // Load the gameboy_bus program that's shared by the read and write state
   // machines
   uint offset_main = pio_add_program(pio1, &gameboy_bus_program);
+  uint offset_detect_a14 =
+      pio_add_program(pio1, &gameboy_bus_detect_a14_program);
+  uint offset_ram = pio_add_program(pio1, &gameboy_bus_ram_program);
+
+  uint offset_rom = pio_add_program(pio0, &gameboy_bus_rom_program);
   uint offset_write_data =
       pio_add_program(pio0, &gameboy_bus_write_to_data_program);
-  uint offset_ram = pio_add_program(pio1, &gameboy_bus_ram_program);
 
   // Initialize the read state machine (handles read accesses)
   gameboy_bus_program_init(pio1, SMC_GB_MAIN, offset_main);
-  gameboy_bus_write_to_data_program_init(pio0, SMC_GB_WRITE_DATA,
-                                         offset_write_data);
+  gameboy_bus_detect_a14_program_init(pio1, SMC_GB_DETECT_A14,
+                                      offset_detect_a14);
   gameboy_bus_ram_read_program_init(pio1, SMC_GB_RAM_READ, offset_ram);
   gameboy_bus_ram_write_program_init(pio1, SMC_GB_RAM_WRITE, offset_ram);
 
+  gameboy_bus_rom_low_program_init(pio0, SMC_GB_ROM_LOW, offset_rom);
+  gameboy_bus_rom_high_program_init(pio0, SMC_GB_ROM_HIGH, offset_rom);
+  gameboy_bus_write_to_data_program_init(pio0, SMC_GB_WRITE_DATA,
+                                         offset_write_data);
+
   pio_sm_set_enabled(pio1, SMC_GB_MAIN, true);
-  pio_sm_set_enabled(pio0, SMC_GB_WRITE_DATA, true);
+  pio_sm_set_enabled(pio1, SMC_GB_DETECT_A14, true);
   pio_sm_set_enabled(pio1, SMC_GB_RAM_READ, true);
   pio_sm_set_enabled(pio1, SMC_GB_RAM_WRITE, true);
 
-  set_x(pio1, SMC_GB_MAIN, ((unsigned)memory) >> 15);
+  pio_sm_set_enabled(pio0, SMC_GB_ROM_LOW, true);
+  pio_sm_set_enabled(pio0, SMC_GB_ROM_HIGH, true);
+  pio_sm_set_enabled(pio0, SMC_GB_WRITE_DATA, true);
+
+  set_x(pio0, SMC_GB_ROM_LOW, ((unsigned)memory) >> 14);
+  set_x(pio0, SMC_GB_ROM_HIGH, ((unsigned)memory + 0x4000) >> 14);
   set_x(pio1, SMC_GB_RAM_READ, ((unsigned)ram_memory) >> 13);
   set_x(pio1, SMC_GB_RAM_WRITE, ((unsigned)ram_memory) >> 13);
 
-  setup_read_dma(pio1, SMC_GB_MAIN, pio0, SMC_GB_WRITE_DATA);
+  setup_read_dma(pio0, SMC_GB_ROM_LOW, pio0, SMC_GB_WRITE_DATA);
+  setup_read_dma(pio0, SMC_GB_ROM_HIGH, pio0, SMC_GB_WRITE_DATA);
   setup_read_dma(pio1, SMC_GB_RAM_READ, pio0, SMC_GB_WRITE_DATA);
   setup_write_dma(pio1, SMC_GB_RAM_WRITE);
 
@@ -227,14 +250,15 @@ int main() {
       }
 
       memcpy(memory, games[ram_memory[0x1000]], sizeof(memory));
-      //set_x(pio1, SMC_GB_MAIN, ((unsigned)memory) >> 15);
+      // set_x(pio1, SMC_GB_MAIN, ((unsigned)memory) >> 15);
 
+      printf_("Selected Game: %d\n", ram_memory[0x1000]);
       gpio_put(PIN_GB_RESET, 0);
       loaded = true;
     }
 
     if (ram_memory[0x1010] != 0) {
-      reset_usb_boot(0,0);
+      reset_usb_boot(0, 0);
     }
 
     pio_sm_put_blocking(pio0, SMC_WS2812, color << 8);
@@ -244,18 +268,4 @@ int main() {
     sleep_ms(999);
   }
 
-  //   while (1) {
-  //     pio_sm_put_blocking(pio0, 0, 0x0000FF << 8);
-
-  //     uint64_t start = time_us_64();
-  //     memcpy(memory, huge_data_table_uncached, 0x4000);
-  //     uint64_t end = time_us_64();
-
-  //     //printf("%u: copy took %llu\n", count, end - start);
-  //     count++;
-
-  //     pio_sm_put_blocking(pio0, 0, 0);
-
-  //     sleep_ms(1000);
-  //   }
 }
