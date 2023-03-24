@@ -14,11 +14,18 @@
 .program gameboy_bus
 
 a15_high:
-    irq set 5
+    irq set 4
 .wrap_target
+    in pins 1 ; shift in RD pin
+    mov y isr ; store rd pin in y
+    in   pins 17                     ; shift rd pin and address into ISR
+    in null 15 ; fill up ISR to trigger auto push
     wait 0 gpio PIN_CLK
-public entry_point:                                     ; *** Default Entry Point ***
+    jmp  !y idle[7]  ; Y holds read pin, skip to idle on reads
+    in   pins 25  ; sample read rd pin, addr pins and data pins
+    in   null 24  ; 7+17=24 shit read and addr pins out of the isr to only leave the data, trigger auto push
 idle:
+public entry_point:
     mov  isr null  ; Clear ISR
     wait 1 gpio PIN_CLK                     ; wait for clk
 
@@ -26,18 +33,16 @@ idle:
 loop:
     jmp  y-- loop[1]                       ; delay to let adress pins become available
     jmp  pin a15_high                       ; if A15 is high jump to high area notification
-    in pins 1 ; shift in RD pin
-    mov y isr ; store rd pin in y
-    in   pins 16                     ; shift rd pin and address into ISR
-    jmp  y-- idle                          ; Y=Rnw - skip the FIFO push on write cycles (RnW=0)
-    ;in   x 17                                  ; shift fixed part of ARM address (held in x) into ISR and trigger auto push
+    irq set 5                         ; set irq for A15 low, though right now nobody needs it
     .wrap ; wrap back to beginning
+
+
 
 
 .program gameboy_bus_detect_a14
 idle:
 .wrap_target
-    wait 1 irq 5 
+    wait 1 irq 4 
     jmp pin idle ; jmp back to idle if A14 is high
     irq set 6
     .wrap ; wrap back to beginning
@@ -128,6 +133,8 @@ public low_wrap: ; low rom state machine wraps here
         sm_config_set_jmp_pin (&c, PIN_A15);
         sm_config_set_in_pins(&c, PIN_AD_BASE-1);
         sm_config_set_in_shift( &c, true, true, 32);  // shift right=true, auto-push=true
+
+        sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
 
         ; sm_config_set_sideset_pins(&c, PIN_UART_TX);
         ; pio_sm_set_consecutive_pindirs(pio, sm, PIN_UART_TX, 1, true);

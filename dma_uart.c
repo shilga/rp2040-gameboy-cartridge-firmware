@@ -12,7 +12,7 @@
 
 #define UART0_TX_PIN 28
 
-#define BAUD_RATE 115200
+#define BAUD_RATE 1000000
 #define DATA_BITS 8
 #define STOP_BITS 1
 #define PARITY UART_PARITY_NONE
@@ -85,6 +85,7 @@ void dma_uart_init() {
   channel_config_set_dreq(&tx_dma_config, uart_get_dreq(uart0, true));
   channel_config_set_transfer_data_size(&tx_dma_config, DMA_SIZE_8);
   channel_config_set_ring(&tx_dma_config, false, 8);
+  channel_config_set_high_priority(&tx_dma_config, false);
 
   dma_channel_set_config(_tx_dma_chan, &tx_dma_config, false);
   dma_channel_set_read_addr(_tx_dma_chan, uart_tx_buffer, false);

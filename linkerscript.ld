@@ -58,13 +58,6 @@ SECTIONS
        launches only, to perform proper flash setup.
     */
 
-/*
-    .ram_text : {
-        *printf.c.obj(.text*);
-        *(.text.putchar_)
-        . = ALIGN(4);
-    } > RAM AT> FLASH
-*/
     .text : {
         __logical_binary_start = .;
         KEEP (*(.vectors))
@@ -75,7 +68,7 @@ SECTIONS
         /* bit of a hack right now to exclude all floating point and time critical (e.g. memset, memcpy) code from
          * FLASH ... we will include any thing excluded here in .data below by default */
         *(.init)
-        *(EXCLUDE_FILE(*libgcc.a: *libc.a:*lib_a-mem*.o *libm.a:) .text*)
+        *(EXCLUDE_FILE(*libgcc.a: *libc.a:*lib_a-mem*.o *libm.a: *libprintf.a: *dma_uart.c.obj) .text*)
         *(.fini)
         /* Pull all c'tors into .text */
         *crtbegin.o(.ctors)
@@ -127,7 +120,7 @@ SECTIONS
     /* End of .text-like segments */
     __etext = .;
 
-   .ram_vector_table (COPY): {
+    .ram_vector_table (COPY): {
         *(.ram_vector_table)
     } > RAM
 
@@ -136,8 +129,6 @@ SECTIONS
         *(vtable)
 
         *(.time_critical*)
-
-        *printf.c.obj(.text*)
 
         /* remaining .text and .rodata; i.e. stuff we exclude above because we want it in RAM */
         *(.text*)
