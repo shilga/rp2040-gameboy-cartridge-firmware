@@ -77,53 +77,73 @@ public read_wrap:                                       ; *** READ state machine
 public write_wrap:                                      ; *** WRITE state machine wraps to write_wrap_target ***
 
 
-.program gameboy_bus_write_to_data
+; .program gameboy_bus_write_to_data
 
-.wrap_target
+; .wrap_target
+;     pull block                                 ; pull the data from the Tx FIFO into the OSR
+;     out  pins 8                                ; output 8 bits of data
+;     mov  osr ~NULL                             ; OSR=FFFFFFFF
+;     wait 0 gpio PIN_CLK                        ; wait for clk
+;     out  pindirs 8                             ; start driving the data bus
+;     mov  osr NULL
+;     wait 1 gpio PIN_CLK                     ; wait for clk
+;     out  pindirs 8                          ; stop driving the data bus
+;     .wrap ; wrap back to beginning
+
+
+
+.program gameboy_bus_rom
+.side_set 1 opt
+
+public high_wrap_target:
+    jmp !y pullandpush ; if A14 is low back to idle, y is 0 in this case, which does not push to data
+public entry_point_write_to_data:
+    set y 1 ; set y so pulled data will be pushed to pins
+
+public low_wrap_target:
+    ; both state machines end up here after they have determined if they should push the received data
+    ; also write_to_data sm wraps to here
+
+pullandpush:
     pull block                                 ; pull the data from the Tx FIFO into the OSR
-    out  pins 8                                ; output 8 bits of data
+    jmp !y idle   ; only push data to pins if y is not 0
+    out  pins 8  side 0                              ; output 8 bits of data
     mov  osr ~NULL                             ; OSR=FFFFFFFF
     wait 0 gpio PIN_CLK                        ; wait for clk
     out  pindirs 8                             ; start driving the data bus
     mov  osr NULL
     wait 1 gpio PIN_CLK                     ; wait for clk
-    out  pindirs 8                          ; stop driving the data bus
-    .wrap ; wrap back to beginning
+    out  pindirs 8                         ; stop driving the data bus
+public write_to_data_wrap:
+    jmp delay
 
-
-
-.program gameboy_bus_rom
-public high_wrap_target:
-    jmp !y idle ; if A14 is low back to idle
-
-public low_wrap_target:
-    ; both state machines end up here if they have determined that they should push the address
-    in   x 18           ; shift fixed part of ARM address (held in x) into ISR and shift rd pin out
-    push
-    wait 0 gpio PIN_CLK                     ; wait for clk
-public entry_point:
 idle:
-    mov  isr null  ; Clear ISR
-    wait 1 gpio PIN_CLK                     ; wait for clk
+    wait 0 gpio PIN_CLK                     ; wait for clk
 
-    set  y DELAY_COUNT_ADDR_READ
+public entry_point:
+    wait 1 gpio PIN_CLK[2]                     ; wait for clk
+
+delay:
+    set  y 30
 loop:
     jmp  y-- loop[1]                       ; delay to let adress pins become available
     jmp  pin idle                       ; if A15 is high not interested
+
+    in   pins 15                     ; shift rd and A0 to A13 pins into ISR
+    in   null 18  side 1         ; fill up ISR and shift rd pin out
+    push
     
     in pins 1 ; shift in RD pin
     mov y isr ; store rd pin in y
-    jmp  y-- idle                          ; if not read back to idle
+    jmp  y-- pullandpush ; if not read back to idle, y was 1 in this case so it is 0 after this instruction, which does not push to data
 
     in pins 16 ; shift in rd and A0 to A14
     in null 31 ; 16 + 1 + 14 shift rd and lower addr pins out of isr. A14 is at pos 0 afterwards
     mov y isr ; store A14 in y
 
-    in   pins 15                     ; shift rd and A0 to A13 pins into ISR
-
 public high_wrap: ; high rom state machine wraps here
 
-    jmp y-- idle ; if A14 is high back to idle
+    jmp y-- pullandpush[1] ; if A14 is high back to idle, y was 1 in this case so it is 0 after this instruction, which does not push to data
 public low_wrap: ; low rom state machine wraps here
 
 % c-sdk {
@@ -136,8 +156,8 @@ public low_wrap: ; low rom state machine wraps here
 
         sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
 
-        ; sm_config_set_sideset_pins(&c, PIN_UART_TX);
-        ; pio_sm_set_consecutive_pindirs(pio, sm, PIN_UART_TX, 1, true);
+        // sm_config_set_sideset_pins(&c, PIN_UART_TX);
+        // pio_sm_set_consecutive_pindirs(pio, sm, PIN_UART_TX, 1, true);
         
         pio_sm_init(pio, sm, offset + gameboy_bus_offset_entry_point, &c);
     }
@@ -157,8 +177,8 @@ public low_wrap: ; low rom state machine wraps here
         
 
 	    sm_config_set_sideset(&c, 0, false, false);
-        ; sm_config_set_sideset_pins(&c, PIN_UART_TX);
-        ; pio_sm_set_consecutive_pindirs(pio, sm, PIN_UART_TX, 1, true);
+        // sm_config_set_sideset_pins(&c, PIN_UART_TX);
+        // pio_sm_set_consecutive_pindirs(pio, sm, PIN_UART_TX, 1, true);
         
         sm_config_set_wrap(&c, offset + gameboy_bus_ram_offset_read_wrap_target,  offset + gameboy_bus_ram_offset_read_wrap  - 1);
 
@@ -174,8 +194,8 @@ public low_wrap: ; low rom state machine wraps here
         
 
 	    sm_config_set_sideset(&c, 0, false, false);
-        ; sm_config_set_sideset_pins(&c, PIN_UART_TX);
-        ; pio_sm_set_consecutive_pindirs(pio, sm, PIN_UART_TX, 1, true);
+        // sm_config_set_sideset_pins(&c, PIN_UART_TX);
+        // pio_sm_set_consecutive_pindirs(pio, sm, PIN_UART_TX, 1, true);
         
         sm_config_set_wrap(&c, offset + gameboy_bus_ram_offset_write_wrap_target, offset + gameboy_bus_ram_offset_write_wrap - 1);
 
@@ -184,14 +204,17 @@ public low_wrap: ; low rom state machine wraps here
     }
 
     void gameboy_bus_write_to_data_program_init(PIO pio, uint sm, uint offset) {
-        pio_sm_config c = gameboy_bus_write_to_data_program_get_default_config(offset);
+        pio_sm_config c = gameboy_bus_rom_program_get_default_config(offset);
         sm_config_set_out_pins(&c, PIN_DATA_BASE, 8);
         sm_config_set_out_shift(&c, true, false, 8);  // shift right=true, auto-pull=false
 
-        ; sm_config_set_sideset_pins(&c, PIN_UART_TX);
-        ; pio_sm_set_consecutive_pindirs(pio, sm, PIN_UART_TX, 1, true);
+        sm_config_set_sideset(&c, 0, false, false);
+        // sm_config_set_sideset_pins(&c, PIN_UART_TX);
+        // pio_sm_set_consecutive_pindirs(pio, sm, PIN_UART_TX, 1, true);
+
+        sm_config_set_wrap(&c, offset + gameboy_bus_rom_offset_low_wrap_target,  offset + gameboy_bus_rom_offset_write_to_data_wrap  - 1);
         
-        pio_sm_init(pio, sm, offset, &c);
+        pio_sm_init(pio, sm, offset + gameboy_bus_rom_offset_entry_point_write_to_data, &c);
     }
 
     void gameboy_bus_rom_low_program_init(PIO pio, uint sm, uint offset) {
@@ -199,11 +222,14 @@ public low_wrap: ; low rom state machine wraps here
         sm_config_set_jmp_pin (&c, PIN_A15);
         sm_config_set_in_pins(&c, PIN_AD_BASE-1);
         sm_config_set_in_shift( &c, true, false, 32);  // shift right=true, auto-push=false
+
+        sm_config_set_out_pins(&c, PIN_DATA_BASE, 8);
+        sm_config_set_out_shift(&c, true, false, 8);  // shift right=true, auto-pull=false
         
 
-	    sm_config_set_sideset(&c, 0, false, false);
-        ; sm_config_set_sideset_pins(&c, PIN_UART_TX);
-        ; pio_sm_set_consecutive_pindirs(pio, sm, PIN_UART_TX, 1, true);
+	    // sm_config_set_sideset(&c, 0, false, false);
+        sm_config_set_sideset_pins(&c, PIN_UART_TX);
+        pio_sm_set_consecutive_pindirs(pio, sm, PIN_UART_TX, 1, true);
         
         sm_config_set_wrap(&c, offset + gameboy_bus_rom_offset_low_wrap_target,  offset + gameboy_bus_rom_offset_low_wrap  - 1);
 
@@ -215,11 +241,14 @@ public low_wrap: ; low rom state machine wraps here
         sm_config_set_jmp_pin (&c, PIN_A15);
         sm_config_set_in_pins(&c, PIN_AD_BASE-1);
         sm_config_set_in_shift( &c, true, false, 32);  // shift right=true, auto-push=false
+
+        sm_config_set_out_pins(&c, PIN_DATA_BASE, 8);
+        sm_config_set_out_shift(&c, true, false, 8);  // shift right=true, auto-pull=false
         
 
 	    sm_config_set_sideset(&c, 0, false, false);
-        ; sm_config_set_sideset_pins(&c, PIN_UART_TX);
-        ; pio_sm_set_consecutive_pindirs(pio, sm, PIN_UART_TX, 1, true);
+        //sm_config_set_sideset_pins(&c, PIN_UART_TX);
+        //pio_sm_set_consecutive_pindirs(pio, sm, PIN_UART_TX, 1, true);
         
         sm_config_set_wrap(&c, offset + gameboy_bus_rom_offset_high_wrap_target,  offset + gameboy_bus_rom_offset_high_wrap  - 1);
 
