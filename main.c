@@ -27,11 +27,12 @@
 #include "roms/Othello.h"
 // #include "roms/PokemonBlue.h"
 #include "roms/SuperMario.h"
-// #include "roms/SuperMario2.h"
+#include "roms/SuperMario2.h"
 #include "roms/Tetris.h"
 #include "roms/YoshisCookie.h"
 #include "roms/ph-t_02.h"
 #include "roms/merken.h"
+#include "roms/thebouncingball.h"
 
 #include "dma_uart.h"
 
@@ -63,7 +64,7 @@ const volatile uint8_t* rom_high_base = NULL;
 unsigned rom_high_dma;
 
 uint8_t memory[0x8000] __attribute__((aligned(GB_ROM_BANK_SIZE)));
-uint8_t ram_memory[(GB_MAX_RAM_BANKS * GB_RAM_BANK_SIZE) + 1]
+uint8_t ram_memory[(GB_MAX_RAM_BANKS + 1) * GB_RAM_BANK_SIZE]
     __attribute__((aligned(GB_RAM_BANK_SIZE)));
 
 static const uint8_t *_games[] = {
@@ -76,10 +77,11 @@ static const uint8_t *_games[] = {
     (const uint8_t *)((size_t)Alleyway__World__gb + 0x03000000),
     (const uint8_t *)((size_t)Kirby_s_Dream_Land__USA__Europe__gb + 0x03000000),
     (const uint8_t *)((size_t)Yoshi_s_Cookie__USA__Europe__gb + 0x03000000),
+    (const uint8_t *)((size_t)THEBOUNCINGBALL_GB + 0x03000000),
     (const uint8_t *)((size_t)Super_Mario_Land__World___Rev_A__gb + 0x03000000),
-    // (const uint8_t
-    //      *)((size_t)Super_Mario_Land_2___6_Golden_Coins__UE___V1_2______gb +
-    //         0x03000000)
+    (const uint8_t
+         *)((size_t)Super_Mario_Land_2___6_Golden_Coins__UE___V1_2______gb +
+            0x03000000)
     };
 size_t num_games = sizeof(_games) / sizeof(uint8_t *);
 
