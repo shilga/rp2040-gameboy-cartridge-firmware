@@ -1,3 +1,5 @@
+#include <hardware/address_mapped.h>
+#include <hardware/dma.h>
 #include <hardware/gpio.h>
 #include <hardware/pio.h>
 #include <hardware/regs/ssi.h>
@@ -5,20 +7,18 @@
 #include <hardware/vreg.h>
 #include <pico/bootrom.h>
 #include <pico/platform.h>
+#include <pico/stdio.h>
+#include <pico/stdio_uart.h>
 #include <pico/stdlib.h>
 #include <pico/time.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdio_ext.h>
 #include <string.h>
-
-#include <printf/printf.h>
-
-#include <hardware/dma.h>
 #include <sys/_types.h>
 
-#include "hardware/address_mapped.h"
 #include "roms/20y.h"
 #include "roms/Alleyway.h"
 #include "roms/DrMario.h"
@@ -30,11 +30,9 @@
 #include "roms/SuperMario2.h"
 #include "roms/Tetris.h"
 #include "roms/YoshisCookie.h"
-#include "roms/ph-t_02.h"
 #include "roms/merken.h"
+#include "roms/ph-t_02.h"
 #include "roms/thebouncingball.h"
-
-#include "dma_uart.h"
 
 #include "gameboy_bus.pio.h"
 #include "ws2812.pio.h"
@@ -58,13 +56,13 @@
 #define GB_ROM_BANK_SIZE 0x4000U
 #define GB_MAX_RAM_BANKS 8 /* 64K of RAM enough for MBC3*/
 
-const volatile uint8_t* rom_low_base = NULL;
-const volatile uint8_t* rom_high_base = NULL;
-
-unsigned rom_high_dma;
+const volatile uint8_t *ram_base = NULL;
+const volatile uint8_t *rom_low_base = NULL;
+const volatile uint8_t *rom_high_base = NULL;
 
 uint8_t memory[0x8000] __attribute__((aligned(GB_ROM_BANK_SIZE)));
-uint8_t ram_memory[(GB_MAX_RAM_BANKS + 1) * GB_RAM_BANK_SIZE]
+uint8_t __attribute__((section(".noinit.")))
+ram_memory[(GB_MAX_RAM_BANKS + 1) * GB_RAM_BANK_SIZE]
     __attribute__((aligned(GB_RAM_BANK_SIZE)));
 
 static const uint8_t *_games[] = {
@@ -81,64 +79,19 @@ static const uint8_t *_games[] = {
     (const uint8_t *)((size_t)Super_Mario_Land__World___Rev_A__gb + 0x03000000),
     (const uint8_t
          *)((size_t)Super_Mario_Land_2___6_Golden_Coins__UE___V1_2______gb +
-            0x03000000)
-    };
+            0x03000000)};
 size_t num_games = sizeof(_games) / sizeof(uint8_t *);
+
+uint32_t __attribute__((section(".noinit."))) noInitTest;
 
 uint8_t runGbBootloader();
 void loadGame(uint8_t game);
 void runNoMbcGame(uint8_t game);
 void runMbc1Game(uint8_t game, uint16_t num_rom_banks, uint8_t num_ram_banks);
 
-static void inline set_x(PIO pio, unsigned smc, unsigned x) {
-  pio_sm_put_blocking(pio, smc, x);
-  pio_sm_exec_wait_blocking(pio, smc, pio_encode_pull(false, false));
-  pio_sm_exec_wait_blocking(pio, smc, pio_encode_mov(pio_x, pio_osr));
-}
-
-static void setup_read_dma(PIO pio, unsigned sm, PIO pio_write_data,
-                           unsigned sm_write_data) {
-  unsigned dma1, dma2;
-  dma_channel_config cfg;
-
-  dma1 = dma_claim_unused_channel(true);
-  dma2 = dma_claim_unused_channel(true);
-
-  // Set up DMA2 first (it's not triggered until DMA1 does so)
-  cfg = dma_channel_get_default_config(dma2);
-  channel_config_set_read_increment(&cfg, false);
-  // write increment defaults to false
-  // dreq defaults to DREQ_FORCE
-  channel_config_set_transfer_data_size(&cfg, DMA_SIZE_8);
-  channel_config_set_high_priority(&cfg, true);
-  dma_channel_set_trans_count(dma2, 1, false);
-  dma_channel_set_write_addr(dma2, &(pio_write_data->txf[sm_write_data]),
-                             false);
-  channel_config_set_chain_to(&cfg, dma1);
-  dma_channel_set_config(dma2, &cfg, false);
-
-  // Set up DMA1 and trigger it
-  cfg = dma_channel_get_default_config(dma1);
-  channel_config_set_read_increment(&cfg, false);
-  // write increment defaults to false
-  channel_config_set_dreq(&cfg, pio_get_dreq(pio, sm, false));
-  // transfer size defaults to 32
-  channel_config_set_high_priority(&cfg, true);
-  dma_channel_set_trans_count(dma1, 1, false);
-  dma_channel_set_read_addr(dma1, &(pio->rxf[sm]), false);
-  dma_channel_set_write_addr(dma1, &(dma_hw->ch[dma2].al3_read_addr_trig),
-                             false);
-  dma_channel_set_config(dma1, &cfg, true);
-}
-
-static void inline set_read_dma_base_addr(unsigned dma, const volatile uint8_t** read_base_addr_ptr, const uint8_t* read_base_addr)
-{
-  *read_base_addr_ptr = read_base_addr;
-  dma_hw->ch[dma].read_addr = (uint32_t)read_base_addr;
-}
-
-static unsigned setup_read_dma_method2(PIO pio, unsigned sm, PIO pio_write_data,
-                           unsigned sm_write_data, const volatile void* read_base_addr) {
+static void setup_read_dma_method2(PIO pio, unsigned sm, PIO pio_write_data,
+                                   unsigned sm_write_data,
+                                   const volatile void *read_base_addr) {
   unsigned dma1, dma2, dma3;
   dma_channel_config cfg;
 
@@ -159,9 +112,6 @@ static unsigned setup_read_dma_method2(PIO pio, unsigned sm, PIO pio_write_data,
   channel_config_set_chain_to(&cfg, dma1);
   dma_channel_set_config(dma2, &cfg, false);
 
-  // // prime the base address into DMA2
-  // dma_hw->ch[dma2].read_addr = *((uint32_t*)read_base_addr);
-
   // Set up DMA1 and trigger it
   cfg = dma_channel_get_default_config(dma1);
   channel_config_set_read_increment(&cfg, false);
@@ -171,8 +121,7 @@ static unsigned setup_read_dma_method2(PIO pio, unsigned sm, PIO pio_write_data,
   channel_config_set_high_priority(&cfg, true);
   dma_channel_set_trans_count(dma1, 1, false);
   dma_channel_set_read_addr(dma1, &(pio->rxf[sm]), false);
-  dma_channel_set_write_addr(dma1, &(dma_hw->ch[dma2].read_addr),
-                             false);
+  dma_channel_set_write_addr(dma1, &(dma_hw->ch[dma2].read_addr), false);
   channel_config_set_chain_to(&cfg, dma3);
   dma_channel_set_config(dma1, &cfg, true);
 
@@ -184,20 +133,21 @@ static unsigned setup_read_dma_method2(PIO pio, unsigned sm, PIO pio_write_data,
   channel_config_set_high_priority(&cfg, true);
   dma_channel_set_trans_count(dma3, 1, false);
   dma_channel_set_read_addr(dma3, read_base_addr, false);
-  dma_channel_set_write_addr(dma3, hw_set_alias_untyped(&(dma_hw->ch[dma2].al3_read_addr_trig)),
-                             false);
+  dma_channel_set_write_addr(
+      dma3, hw_set_alias_untyped(&(dma_hw->ch[dma2].al3_read_addr_trig)),
+      false);
   // channel_config_set_chain_to(&cfg, dma2);
   dma_channel_set_config(dma3, &cfg, false);
-
-  return dma3;
 }
 
-static void setup_write_dma(PIO pio, unsigned sm) {
-  unsigned dma1, dma2;
+static void setup_write_dma_method2(PIO pio, unsigned sm,
+                                    const volatile void *write_base_addr) {
+  unsigned dma1, dma2, dma3;
   dma_channel_config cfg;
 
   dma1 = dma_claim_unused_channel(true);
   dma2 = dma_claim_unused_channel(true);
+  dma3 = dma_claim_unused_channel(true);
 
   // Set up DMA2 first (it's not triggered until DMA1 does so)
   cfg = dma_channel_get_default_config(dma2);
@@ -217,12 +167,26 @@ static void setup_write_dma(PIO pio, unsigned sm) {
   // write increment defaults to false
   channel_config_set_dreq(&cfg, pio_get_dreq(pio, sm, false));
   // transfer size defaults to 32
+  channel_config_set_chain_to(&cfg, dma3);
   channel_config_set_high_priority(&cfg, true);
   dma_channel_set_trans_count(dma1, 1, false);
   dma_channel_set_read_addr(dma1, &(pio->rxf[sm]), false);
-  dma_channel_set_write_addr(dma1, &(dma_hw->ch[dma2].al2_write_addr_trig),
-                             false);
+  dma_channel_set_write_addr(dma1, &(dma_hw->ch[dma2].write_addr), false);
   dma_channel_set_config(dma1, &cfg, true);
+
+  cfg = dma_channel_get_default_config(dma3);
+  channel_config_set_read_increment(&cfg, false);
+  // write increment defaults to false
+  // dreq defaults to DREQ_FORCE
+  // transfer size defaults to 32
+  channel_config_set_high_priority(&cfg, true);
+  dma_channel_set_trans_count(dma3, 1, false);
+  dma_channel_set_read_addr(dma3, write_base_addr, false);
+  dma_channel_set_write_addr(
+      dma3, hw_set_alias_untyped(&(dma_hw->ch[dma2].al2_write_addr_trig)),
+      false);
+  // channel_config_set_chain_to(&cfg, dma2);
+  dma_channel_set_config(dma3, &cfg, false);
 }
 
 int main() {
@@ -230,23 +194,17 @@ int main() {
   // bi_decl(bi_1pin_with_name(LED_PIN, "on-board PIN"));
 
   {
-    /* The value for VCO set here is meant for least power
-     * consumption. */
-    const unsigned vco = 532000000; /* 266MHz/133MHz */
-    const unsigned div1 = 2, div2 = 1;
-
     vreg_set_voltage(VREG_VOLTAGE_1_15);
     sleep_ms(2);
     set_sys_clock_khz(266000, true);
     sleep_ms(2);
-    //  set_sys_clock_pll(vco, div1, div2);
-    //  sleep_ms(2);
   }
 
-  dma_uart_init();
-  printf_("Hello World!\n");
+  stdio_uart_init_full(uart0, 1000000, 28, -1);
 
-  printf_("SSI->BAUDR: %x\n", *((uint32_t *)(XIP_SSI_BASE + SSI_BAUDR_OFFSET)));
+  printf("Hello World!\n");
+
+  printf("SSI->BAUDR: %x\n", *((uint32_t *)(XIP_SSI_BASE + SSI_BAUDR_OFFSET)));
 
   gpio_init(PIN_GB_RESET);
   gpio_set_dir(PIN_GB_RESET, true);
@@ -254,7 +212,7 @@ int main() {
 
   // gpio_init(28);
   // gpio_set_dir(28, true);
-  pio_gpio_init(pio0, 28);
+  // pio_gpio_init(pio0, 28);
 
   for (uint pin = PIN_AD_BASE - 1; pin < PIN_AD_BASE + 25; pin++) {
     // gpio_init(pin);
@@ -290,8 +248,21 @@ int main() {
 
   gameboy_bus_rom_low_program_init(pio0, SMC_GB_ROM_LOW, offset_rom);
   gameboy_bus_rom_high_program_init(pio0, SMC_GB_ROM_HIGH, offset_rom);
-  gameboy_bus_write_to_data_program_init(pio0, SMC_GB_WRITE_DATA,
-                                         offset_rom);
+  gameboy_bus_write_to_data_program_init(pio0, SMC_GB_WRITE_DATA, offset_rom);
+
+  // initialze base pointers with some default values before initialzizing the
+  // DMAs
+  ram_base = &ram_memory[GB_MAX_RAM_BANKS * GB_RAM_BANK_SIZE];
+  rom_low_base = memory;
+  rom_high_base = &memory[GB_ROM_BANK_SIZE];
+
+  setup_read_dma_method2(pio1, SMC_GB_RAM_READ, pio0, SMC_GB_WRITE_DATA,
+                         &ram_base);
+  setup_write_dma_method2(pio1, SMC_GB_RAM_WRITE, &ram_base);
+  setup_read_dma_method2(pio0, SMC_GB_ROM_HIGH, pio0, SMC_GB_ROM_HIGH,
+                         &rom_high_base);
+  setup_read_dma_method2(pio0, SMC_GB_ROM_LOW, pio0, SMC_GB_ROM_LOW,
+                         &rom_low_base);
 
   // enable all gameboy state machines
   pio_sm_set_enabled(pio1, SMC_GB_MAIN, true);
@@ -303,19 +274,16 @@ int main() {
   pio_sm_set_enabled(pio0, SMC_GB_ROM_HIGH, true);
   pio_sm_set_enabled(pio0, SMC_GB_WRITE_DATA, true);
 
-  // setup_read_dma(pio0, SMC_GB_ROM_LOW, pio0, SMC_GB_ROM_LOW);
-  // setup_read_dma(pio0, SMC_GB_ROM_HIGH, pio0, SMC_GB_ROM_HIGH);
-  setup_read_dma(pio1, SMC_GB_RAM_READ, pio0, SMC_GB_WRITE_DATA);
-  setup_write_dma(pio1, SMC_GB_RAM_WRITE);
-
-  rom_low_base = memory;
-  rom_high_base = &memory[GB_ROM_BANK_SIZE];
-  rom_high_dma = setup_read_dma_method2(pio0, SMC_GB_ROM_HIGH, pio0, SMC_GB_ROM_HIGH, &rom_high_base);
-  setup_read_dma_method2(pio0, SMC_GB_ROM_LOW, pio0, SMC_GB_ROM_LOW, &rom_low_base);
-
   // load and start the WS8212 StateMachine to control the RGB LED
   uint offset = pio_add_program(pio0, &ws2812_program);
   ws2812_program_init(pio0, SMC_WS2812, offset, WS2812_PIN, 800000, false);
+
+  // short test to see if no-init RAM area is working
+  if (noInitTest == 0xcafeaffe) {
+    pio_sm_put_blocking(pio0, SMC_WS2812, 0x220000 << 8);
+  } else {
+    noInitTest = 0xcafeaffe;
+  }
 
   uint8_t game = runGbBootloader();
 
@@ -325,32 +293,26 @@ int main() {
   while (1) {
     tight_loop_contents();
   }
-
-  //   pio_sm_put_blocking(pio0, SMC_WS2812, color << 8);
-  //   sleep_ms(1);
-  //   pio_sm_put_blocking(pio0, SMC_WS2812, 0);
-
-  //   sleep_ms(999);
-  // }
 }
 
 uint8_t __no_inline_not_in_flash_func(runGbBootloader)() {
   uint8_t selectedGame = 0xFF;
+  // use spare RAM bank to not overwrite potential save
+  uint8_t *ram = &ram_memory[GB_MAX_RAM_BANKS * GB_RAM_BANK_SIZE];
 
   memcpy(memory, bootloader_gb, bootloader_gb_len);
 
-  memset(ram_memory, 0, sizeof(ram_memory));
+  memset(ram, 0, GB_RAM_BANK_SIZE);
   // initialize RAM with information about roms
   for (size_t i = 0; i < num_games; i++) {
-    memcpy(&ram_memory[(i * 16) + 1], &(_games[i][0x134]), 16);
+    memcpy(&ram[(i * 16) + 1], &(_games[i][0x134]), 16);
   }
-  ram_memory[0] = (uint8_t)num_games;
-  ram_memory[0x1000] = 0xFF;
+  ram[0] = (uint8_t)num_games;
+  ram[0x1000] = 0xFF;
 
-  // set_x(pio0, SMC_GB_ROM_LOW, ((unsigned)memory) >> 14);
-  // set_x(pio0, SMC_GB_ROM_HIGH, ((unsigned)memory + 0x4000) >> 14);
-  set_x(pio1, SMC_GB_RAM_READ, ((unsigned)ram_memory) >> 13);
-  set_x(pio1, SMC_GB_RAM_WRITE, ((unsigned)ram_memory) >> 13);
+  printf("Found %d games\n", num_games);
+
+  ram_base = ram;
 
   gpio_put(PIN_GB_RESET, 0); // let the gameboy start (deassert reset line)
 
@@ -361,11 +323,10 @@ uint8_t __no_inline_not_in_flash_func(runGbBootloader)() {
       uint16_t addr = (rdAndAddr >> 1) & 0xFFFF;
 
       if (write) {
-        // printf_("It's a write\n");
         uint8_t data = pio_sm_get_blocking(pio1, SMC_GB_MAIN) & 0xFF;
 
         if (addr == 0xB000) {
-          printf_("Selected Game: %d\n", data);
+          printf("Selected Game: %d\n", data);
           selectedGame = data;
         }
 
@@ -385,19 +346,13 @@ uint8_t __no_inline_not_in_flash_func(runGbBootloader)() {
 void __no_inline_not_in_flash_func(runNoMbcGame)(uint8_t game) {
   memcpy(memory, _games[game], GB_ROM_BANK_SIZE);
 
-  // set_x(pio0, SMC_GB_ROM_HIGH, ((unsigned)_games[game] + GB_ROM_BANK_SIZE) >> 14);
-
-  
   rom_high_base = &(_games[game][GB_ROM_BANK_SIZE]);
-  // dma_channel_set_read_addr(rom_high_dma, &rom_high_base, true);
-
-  //set_read_dma_base_addr(rom_high_dma, &rom_high_base, &(_games[game][GB_ROM_BANK_SIZE]));
 
   // disable RAM access state machines, they are not needed anymore
   pio_set_sm_mask_enabled(
       pio1, (1 << SMC_GB_RAM_READ) | (1 << SMC_GB_RAM_WRITE), false);
 
-  printf_("No MBC game loaded\n");
+  printf("No MBC game loaded\n");
 
   gpio_put(PIN_GB_RESET, 0); // let the gameboy start (deassert reset line)
 
@@ -423,7 +378,7 @@ void __no_inline_not_in_flash_func(runMbc1Game)(uint8_t game,
   uint8_t rom_bank_high = 0;
   uint8_t rom_bank_low = 1;
   uint8_t ram_bank = GB_MAX_RAM_BANKS;
-  uint8_t ram_bank_new = GB_MAX_RAM_BANKS;
+  uint8_t ram_bank_new = 0;
   uint8_t ram_bank_local = GB_MAX_RAM_BANKS;
   bool ram_enabled = 0;
   bool new_ram_enabled = 0;
@@ -432,21 +387,11 @@ void __no_inline_not_in_flash_func(runMbc1Game)(uint8_t game,
 
   memcpy(memory, gameptr, GB_ROM_BANK_SIZE);
 
-  //set_read_dma_base_addr(rom_high_dma, &rom_high_base, &gameptr[GB_ROM_BANK_SIZE]);
-
   rom_high_base = &gameptr[GB_ROM_BANK_SIZE];
-  //dma_channel_set_read_addr(rom_high_dma, &rom_high_base, true);
 
-  // set_x(pio0, SMC_GB_ROM_LOW, ((unsigned)memory) >> 14);
-  // set_x(pio0, SMC_GB_ROM_HIGH, ((unsigned)gameptr + GB_ROM_BANK_SIZE) >> 14);
-
-  set_x(pio1, SMC_GB_RAM_READ,
-        ((unsigned)ram_memory + (GB_MAX_RAM_BANKS * GB_RAM_BANK_SIZE)) >> 13);
-  set_x(pio1, SMC_GB_RAM_WRITE,
-        ((unsigned)ram_memory + (GB_MAX_RAM_BANKS * GB_RAM_BANK_SIZE)) >> 13);
-
-  printf_("MBC1 game loaded\n");
-  printf_("initial bank %d a %x\n", rom_bank, ((unsigned)gameptr + (GB_ROM_BANK_SIZE * rom_bank)));
+  printf("MBC1 game loaded\n");
+  printf("initial bank %d a %x\n", rom_bank,
+         ((unsigned)gameptr + (GB_ROM_BANK_SIZE * rom_bank)));
 
   gpio_put(PIN_GB_RESET, 0); // let the gameboy start (deassert reset line)
 
@@ -480,7 +425,7 @@ void __no_inline_not_in_flash_func(runMbc1Game)(uint8_t game,
 
         case 0x6000:
           mode_select = (data & 1);
-          printf_("mode_select %d\n", mode_select);
+          printf("mode_select %d\n", mode_select);
           break;
         default:
 
@@ -492,39 +437,35 @@ void __no_inline_not_in_flash_func(runMbc1Game)(uint8_t game,
         } else {
           rom_bank_new = rom_bank_low;
         }
-        //rom_bank_new = rom_bank_new & rom_banks_mask;
+        rom_bank_new = rom_bank_new & rom_banks_mask;
 
         if (rom_bank != rom_bank_new) {
           rom_bank = rom_bank_new;
           // set_x(pio0, SMC_GB_ROM_HIGH,
           //       ((unsigned)gameptr + (GB_ROM_BANK_SIZE * rom_bank)) >> 14);
           rom_high_base = &gameptr[GB_ROM_BANK_SIZE * rom_bank];
-          //set_read_dma_base_addr(rom_high_dma, &rom_high_base, &gameptr[GB_ROM_BANK_SIZE * rom_bank]);
-          //dma_channel_set_read_addr(rom_high_dma, &rom_high_base, true);
-          
-          //printf_("bank %d a %x\n", rom_bank, ((unsigned)gameptr + (GB_ROM_BANK_SIZE * rom_bank)));
+
+          // printf("bank %d a %x\n", rom_bank, ((unsigned)gameptr +
+          // (GB_ROM_BANK_SIZE * rom_bank)));
         }
 
         if (ram_enabled != new_ram_enabled) {
           ram_enabled = new_ram_enabled;
-          //printf_("ram_enabled %d\n", ram_enabled);
+          // printf("ram_enabled %d\n", ram_enabled);
         }
 
         ram_bank_local = ram_enabled ? ram_bank_new : GB_MAX_RAM_BANKS;
 
         if (ram_bank != ram_bank_local) {
           ram_bank = ram_bank_local;
-          set_x(pio1, SMC_GB_RAM_READ,
-                ((unsigned)ram_memory + (ram_bank * GB_RAM_BANK_SIZE)) >> 13);
-          set_x(pio1, SMC_GB_RAM_WRITE,
-                ((unsigned)ram_memory + (ram_bank * GB_RAM_BANK_SIZE)) >> 13);
+          ram_base = &ram_memory[ram_bank * GB_RAM_BANK_SIZE];
         }
       }
       // else
       // {
       //   if(addr == 0x0000 || addr == 0x4000)
       //   {
-      //     printf_("addr %x was loaded\n", addr);
+      //     printf("addr %x was loaded\n", addr);
       //   }
       // }
       // dma_uart_send(".", 1);
@@ -538,7 +479,7 @@ void loadGame(uint8_t game) {
 
   const uint8_t *gameptr = _games[game];
 
-  printf_("Loading selected game info:\n");
+  printf("Loading selected game info:\n");
 
   switch (gameptr[0x0147]) {
   case 0x00:
@@ -565,9 +506,9 @@ void loadGame(uint8_t game) {
 
   num_rom_banks = 1 << (gameptr[0x0148] + 1);
 
-  printf_("MBC:       %d\n", mbc);
-  printf_("name:      %s\n", (const char *)&gameptr[0x134]);
-  printf_("rom banks: %d\n", num_rom_banks);
+  printf("MBC:       %d\n", mbc);
+  printf("name:      %s\n", (const char *)&gameptr[0x134]);
+  printf("rom banks: %d\n", num_rom_banks);
 
   switch (mbc) {
   case 0x00:
@@ -578,7 +519,7 @@ void loadGame(uint8_t game) {
     break;
 
   default:
-    printf_("Unsupported MBC!\n");
+    printf("Unsupported MBC!\n");
     break;
   }
 }

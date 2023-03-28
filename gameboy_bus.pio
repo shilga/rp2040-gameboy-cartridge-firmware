@@ -29,7 +29,7 @@ public entry_point:
     mov  isr null  ; Clear ISR
     wait 1 gpio PIN_CLK                     ; wait for clk
 
-    set  y DELAY_COUNT_ADDR_READ
+    set  y DELAY_COUNT_ADDR_READ[6]
 loop:
     jmp  y-- loop[1]                       ; delay to let adress pins become available
     jmp  pin a15_high                       ; if A15 is high jump to high area notification
@@ -52,7 +52,7 @@ idle:
 .program gameboy_bus_ram
 public read_wrap_target:
     jmp  y-- idle_data                          ; Y=Rnw - skip the FIFO push on write cycles (RnW=0)
-    in   x 19                                  ; shift fixed part of ARM address (held in x) into ISR and trigger auto push
+    in   null 19                                  ; shift fixed part of ARM address (held in x) into ISR and trigger auto push
 
 public entry_point:                                     ; *** Default Entry Point ***
 public write_wrap_target:
@@ -69,7 +69,7 @@ continue:
 public read_wrap:                                       ; *** READ state machine wraps to read_wrap_target ***
 
     jmp  !y idle_data                         ; Y=Rnw - skip the FIFO push on read cycles (RnW=1)
-    in   x 19                                  ; shift fixed part of ARM address (held in x) into ISR and trigger auto push
+    in   null 19                                  ; shift fixed part of ARM address (held in x) into ISR and trigger auto push
 
     wait 0 gpio PIN_CLK [7]                     ; wait for clk
     in   pins 25                             ; sample read rd pin, addr pins and data pins
@@ -176,7 +176,6 @@ public low_wrap: ; low rom state machine wraps here
         sm_config_set_in_shift( &c, true, true, 32);  // shift right=true, auto-push=true
         
 
-	    //sm_config_set_sideset(&c, 0, false, false);
         // sm_config_set_sideset_pins(&c, PIN_UART_TX);
         // pio_sm_set_consecutive_pindirs(pio, sm, PIN_UART_TX, 1, true);
         
@@ -193,7 +192,6 @@ public low_wrap: ; low rom state machine wraps here
         sm_config_set_in_shift( &c, true, true, 32);  // shift right=true, auto-push=true
         
 
-	    //sm_config_set_sideset(&c, 0, false, false);
         // sm_config_set_sideset_pins(&c, PIN_UART_TX);
         // pio_sm_set_consecutive_pindirs(pio, sm, PIN_UART_TX, 1, true);
         
@@ -208,7 +206,6 @@ public low_wrap: ; low rom state machine wraps here
         sm_config_set_out_pins(&c, PIN_DATA_BASE, 8);
         sm_config_set_out_shift(&c, true, false, 8);  // shift right=true, auto-pull=false
 
-        //sm_config_set_sideset(&c, 0, false, false);
         // sm_config_set_sideset_pins(&c, PIN_UART_TX);
         // pio_sm_set_consecutive_pindirs(pio, sm, PIN_UART_TX, 1, true);
 
@@ -227,7 +224,6 @@ public low_wrap: ; low rom state machine wraps here
         sm_config_set_out_shift(&c, true, false, 8);  // shift right=true, auto-pull=false
         
 
-	    // sm_config_set_sideset(&c, 0, false, false);
         //sm_config_set_sideset_pins(&c, PIN_UART_TX);
         //pio_sm_set_consecutive_pindirs(pio, sm, PIN_UART_TX, 1, true);
         
@@ -246,7 +242,6 @@ public low_wrap: ; low rom state machine wraps here
         sm_config_set_out_shift(&c, true, false, 8);  // shift right=true, auto-pull=false
         
 
-	    // sm_config_set_sideset(&c, 0, false, false);
         //sm_config_set_sideset_pins(&c, PIN_UART_TX);
         //pio_sm_set_consecutive_pindirs(pio, sm, PIN_UART_TX, 1, true);
         

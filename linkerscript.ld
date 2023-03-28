@@ -24,7 +24,8 @@
 MEMORY
 {
     FLASH(rx) : ORIGIN = 0x10000000, LENGTH = 2048k
-    RAM(rwx) : ORIGIN =  0x20000000, LENGTH = 256k
+    RAM(rwx) : ORIGIN =  0x20000000, LENGTH = 128k
+    NOINIT(rwx) : ORIGIN =  0x20020000, LENGTH = 128k
     SCRATCH_X(rwx) : ORIGIN = 0x20040000, LENGTH = 4k
     SCRATCH_Y(rwx) : ORIGIN = 0x20041000, LENGTH = 4k
 }
@@ -173,6 +174,11 @@ SECTIONS
         /* All data end */
         __data_end__ = .;
     } > RAM AT> FLASH
+
+    .noinit (NOLOAD): {
+        . = ALIGN(4);
+        *(.noinit*)
+    } > NOINIT    
 
     .uninitialized_data (COPY): {
         . = ALIGN(4);
