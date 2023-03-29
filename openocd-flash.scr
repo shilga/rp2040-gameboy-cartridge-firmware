@@ -1,0 +1,5 @@
+mon reset halt
+load
+compare-sections
+kill
+quit

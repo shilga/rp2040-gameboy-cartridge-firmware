@@ -6,7 +6,20 @@
         {
             "label": "Flash",
             "type": "shell",
-            "command": "/usr/bin/gdb-multiarch -q -batch -nx -ex 'target extended-remote /dev/ttypACM1' -ex 'set ELFNAME ${workspaceFolderBasename}' -x bmp-flash.scr",
+            "command": "/usr/bin/gdb-multiarch -q -batch -nx -ex 'target extended-remote 10.42.21.51:3333' -ex 'set ELFNAME ${workspaceFolderBasename}' -x bmp-flash.scr",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "Flash with remote openocd",
+            "type": "shell",
+            "command": "/usr/bin/gdb-multiarch -q -batch -nx -ex 'target extended-remote 10.42.21.51:3333' -x openocd-flash.scr ${workspaceRoot}/build/rp2040-gb-cartridge.elf",
             "presentation": {
                 "echo": true,
                 "reveal": "always",

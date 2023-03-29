@@ -19,6 +19,9 @@
 #include <string.h>
 #include <sys/_types.h>
 
+#include <lfs.h>
+#include <lfs_pico_hal.h>
+
 #include "roms/20y.h"
 #include "roms/Alleyway.h"
 #include "roms/DrMario.h"
@@ -30,6 +33,7 @@
 #include "roms/SuperMario2.h"
 #include "roms/Tetris.h"
 #include "roms/YoshisCookie.h"
+#include "roms/Zelda.h"
 #include "roms/merken.h"
 #include "roms/ph-t_02.h"
 #include "roms/thebouncingball.h"
@@ -79,10 +83,20 @@ static const uint8_t *_games[] = {
     (const uint8_t *)((size_t)Super_Mario_Land__World___Rev_A__gb + 0x03000000),
     (const uint8_t
          *)((size_t)Super_Mario_Land_2___6_Golden_Coins__UE___V1_2______gb +
+            0x03000000),
+    (const uint8_t
+         *)((size_t)Legend_of_Zelda__The___Link_s_Awakening__USA__Europe__gb +
             0x03000000)};
+
 size_t num_games = sizeof(_games) / sizeof(uint8_t *);
 
-uint32_t __attribute__((section(".noinit."))) noInitTest;
+uint32_t __attribute__((section(".noinit."))) _noInitTest;
+uint32_t __attribute__((section(".noinit."))) _lastRunningGame;
+
+lfs_t _lfs = {};
+uint8_t _lfsFileBuffer[LFS_CACHE_SIZE];
+
+uint8_t readRamBankCount(const uint8_t *gameptr);
 
 uint8_t runGbBootloader();
 void loadGame(uint8_t game);
@@ -278,11 +292,59 @@ int main() {
   uint offset = pio_add_program(pio0, &ws2812_program);
   ws2812_program_init(pio0, SMC_WS2812, offset, WS2812_PIN, 800000, false);
 
-  // short test to see if no-init RAM area is working
-  if (noInitTest == 0xcafeaffe) {
-    pio_sm_put_blocking(pio0, SMC_WS2812, 0x220000 << 8);
+  if (_noInitTest != 0xcafeaffe) {
+    _noInitTest = 0xcafeaffe;
+    _lastRunningGame = 0xFF;
+    printf("NoInit initialized\n");
+  }
+
+  int lfs_err = lfs_mount(&_lfs, &pico_cfg);
+  if (lfs_err != LFS_ERR_OK) {
+    printf("Error mounting FS %d\n", lfs_err);
+    printf("Formatting...\n");
+
+    lfs_format(&_lfs, &pico_cfg);
+    lfs_err = lfs_mount(&_lfs, &pico_cfg);
+  }
+
+  if (lfs_err != LFS_ERR_OK) {
+    printf("Final error mounting FS %d\n", lfs_err);
   } else {
-    noInitTest = 0xcafeaffe;
+    printf("mounted\n");
+  }
+
+  lfs_err = lfs_mkdir(&_lfs, "/saves");
+  if ((lfs_err != LFS_ERR_OK) && (lfs_err != LFS_ERR_EXIST)) {
+    printf("Error creating saves directory %d\n", lfs_err);
+  }
+
+  if (_lastRunningGame < num_games) {
+    printf("Game %d was running before reset\n", _lastRunningGame);
+
+    if (readRamBankCount(_games[_lastRunningGame]) > 0) {
+      lfs_file_t file;
+      struct lfs_file_config fileconfig = {.buffer = _lfsFileBuffer};
+      char filenamebuffer[40] = "saves/";
+      strcpy(&filenamebuffer[strlen(filenamebuffer)],
+             (const char *)&(_games[_lastRunningGame][0x134]));
+      printf("Saving game RAM to file %s\n", filenamebuffer);
+
+      lfs_err = lfs_file_opencfg(&_lfs, &file, filenamebuffer,
+                                 LFS_O_WRONLY | LFS_O_CREAT, &fileconfig);
+
+      if (lfs_err != LFS_ERR_OK) {
+        printf("Error opening file %d\n", lfs_err);
+      }
+
+      lfs_err = lfs_file_write(&_lfs, &file, ram_memory,
+                               readRamBankCount(_games[_lastRunningGame]) *
+                                   GB_RAM_BANK_SIZE);
+      printf("wrote %d bytes\n", lfs_err);
+
+      lfs_file_close(&_lfs, &file);
+
+      pio_sm_put_blocking(pio0, SMC_WS2812, 0x150000 << 8);
+    }
   }
 
   uint8_t game = runGbBootloader();
@@ -425,7 +487,10 @@ void __no_inline_not_in_flash_func(runMbc1Game)(uint8_t game,
 
         case 0x6000:
           mode_select = (data & 1);
-          printf("mode_select %d\n", mode_select);
+          // printf("mode_select %d\n", mode_select);
+          break;
+        case 0xA000: // write to RAM
+          pio0->txf[SMC_WS2812] = 0x00150000; // switch on LED to red
           break;
         default:
 
@@ -476,6 +541,11 @@ void __no_inline_not_in_flash_func(runMbc1Game)(uint8_t game,
 void loadGame(uint8_t game) {
   uint8_t mbc = 0xFF;
   uint16_t num_rom_banks = 0;
+  uint8_t num_ram_banks = 0;
+
+  lfs_file_t file;
+  struct lfs_file_config fileconfig = {.buffer = _lfsFileBuffer};
+  char filenamebuffer[40] = "saves/";
 
   const uint8_t *gameptr = _games[game];
 
@@ -505,10 +575,36 @@ void loadGame(uint8_t game) {
   }
 
   num_rom_banks = 1 << (gameptr[0x0148] + 1);
+  num_ram_banks = readRamBankCount(gameptr);
 
   printf("MBC:       %d\n", mbc);
   printf("name:      %s\n", (const char *)&gameptr[0x134]);
   printf("rom banks: %d\n", num_rom_banks);
+  printf("ram banks: %d\n", num_ram_banks);
+
+  if (num_ram_banks > 0) {
+    strcpy(&filenamebuffer[strlen(filenamebuffer)],
+           (const char *)&(gameptr[0x134]));
+
+    int lfs_err = lfs_file_opencfg(&_lfs, &file, filenamebuffer, LFS_O_RDONLY,
+                                   &fileconfig);
+
+    if (lfs_err == LFS_ERR_OK) {
+      printf("found save at %s\n", filenamebuffer);
+
+      lfs_err = lfs_file_read(&_lfs, &file, ram_memory,
+                              num_ram_banks * GB_RAM_BANK_SIZE);
+      printf("read %d bytes\n", lfs_err);
+
+      if (lfs_err >= 0) {
+        lfs_file_close(&_lfs, &file);
+      }
+    }
+  }
+
+  _lastRunningGame = game;
+
+  pio_sm_put_blocking(pio0, SMC_WS2812, 0);
 
   switch (mbc) {
   case 0x00:
@@ -522,4 +618,23 @@ void loadGame(uint8_t game) {
     printf("Unsupported MBC!\n");
     break;
   }
+}
+
+uint8_t readRamBankCount(const uint8_t *gameptr) {
+  static const uint8_t LOOKUP[] = {0, 0, 1, 4, 16, 8};
+  const uint8_t value = gameptr[0x0149];
+
+  if (value <= sizeof(LOOKUP)) {
+    return LOOKUP[value];
+  }
+
+  return 0;
+}
+
+void __attribute__((__noreturn__))
+__assert_fail(const char *expr, const char *file, unsigned int line,
+              const char *function) {
+  printf("assert");
+  while (1)
+    ;
 }
