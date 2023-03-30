@@ -15,7 +15,7 @@ add_subdirectory(libs/pico-littlefs)
 
 target_compile_definitions(littlefs-lib PUBLIC LFS_NO_MALLOC LFS_YES_TRACE)
 
-add_executable(${PROJECT_NAME} main.c dma_uart.c)
+add_executable(${PROJECT_NAME} main.c mbc.c)
 
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/generated)
 

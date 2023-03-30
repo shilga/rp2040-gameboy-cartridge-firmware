@@ -28,37 +28,22 @@
 #include "roms/GbBootloader.h"
 #include "roms/Kirby.h"
 #include "roms/Othello.h"
-// #include "roms/PokemonBlue.h"
+#include "roms/PokemonBlue.h"
+#include "roms/PokemonSilver.h"
 #include "roms/SuperMario.h"
 #include "roms/SuperMario2.h"
 #include "roms/Tetris.h"
 #include "roms/YoshisCookie.h"
 #include "roms/Zelda.h"
+// #include "roms/ZeldaDx.h"
 #include "roms/merken.h"
 #include "roms/ph-t_02.h"
 #include "roms/thebouncingball.h"
 
+#include "GlobalDefines.h"
+
 #include "gameboy_bus.pio.h"
 #include "ws2812.pio.h"
-
-#define WS2812_PIN 27
-
-#define PIN_GB_RESET 26
-
-#define SMC_GB_MAIN 0
-#define SMC_GB_DETECT_A14 1
-#define SMC_GB_RAM_READ 2
-#define SMC_GB_RAM_WRITE 3
-
-#define SMC_GB_ROM_LOW 0
-#define SMC_GB_ROM_HIGH 1
-#define SMC_GB_WRITE_DATA 2
-
-#define SMC_WS2812 3
-
-#define GB_RAM_BANK_SIZE 0x2000U
-#define GB_ROM_BANK_SIZE 0x4000U
-#define GB_MAX_RAM_BANKS 8 /* 64K of RAM enough for MBC3*/
 
 const volatile uint8_t *ram_base = NULL;
 const volatile uint8_t *rom_low_base = NULL;
@@ -69,7 +54,7 @@ uint8_t __attribute__((section(".noinit.")))
 ram_memory[(GB_MAX_RAM_BANKS + 1) * GB_RAM_BANK_SIZE]
     __attribute__((aligned(GB_RAM_BANK_SIZE)));
 
-static const uint8_t *_games[] = {
+const uint8_t *_games[] = {
     (const uint8_t *)((size_t)Tetris + 0x03000000),
     (const uint8_t *)((size_t)Dr__Mario__World__gb + 0x03000000),
     (const uint8_t *)((size_t)Othello__Europe__gb + 0x03000000),
@@ -86,6 +71,11 @@ static const uint8_t *_games[] = {
             0x03000000),
     (const uint8_t
          *)((size_t)Legend_of_Zelda__The___Link_s_Awakening__USA__Europe__gb +
+            0x03000000),
+    (const uint8_t *)((size_t)Pokemon_Blue_gb + 0x03000000),
+    (const uint8_t
+         *)((size_t)
+                Pokemon___Silver_Version__USA__Europe___SGB_Enhanced___GB_Compatible__gbc +
             0x03000000)};
 
 size_t num_games = sizeof(_games) / sizeof(uint8_t *);
@@ -102,6 +92,8 @@ uint8_t runGbBootloader();
 void loadGame(uint8_t game);
 void runNoMbcGame(uint8_t game);
 void runMbc1Game(uint8_t game, uint16_t num_rom_banks, uint8_t num_ram_banks);
+void runMbc3Game(uint8_t game, uint16_t num_rom_banks, uint8_t num_ram_banks);
+void runMbc5Game(uint8_t game, uint16_t num_rom_banks, uint8_t num_ram_banks);
 
 static void setup_read_dma_method2(PIO pio, unsigned sm, PIO pio_write_data,
                                    unsigned sm_write_data,
@@ -351,7 +343,7 @@ int main() {
 
   loadGame(game);
 
-  // should never be reached
+  // should only be reached in case there was an error loading the game
   while (1) {
     tight_loop_contents();
   }
@@ -405,139 +397,6 @@ uint8_t __no_inline_not_in_flash_func(runGbBootloader)() {
   return selectedGame;
 }
 
-void __no_inline_not_in_flash_func(runNoMbcGame)(uint8_t game) {
-  memcpy(memory, _games[game], GB_ROM_BANK_SIZE);
-
-  rom_high_base = &(_games[game][GB_ROM_BANK_SIZE]);
-
-  // disable RAM access state machines, they are not needed anymore
-  pio_set_sm_mask_enabled(
-      pio1, (1 << SMC_GB_RAM_READ) | (1 << SMC_GB_RAM_WRITE), false);
-
-  printf("No MBC game loaded\n");
-
-  gpio_put(PIN_GB_RESET, 0); // let the gameboy start (deassert reset line)
-
-  while (1) {
-    if (!pio_sm_is_rx_fifo_empty(pio1, SMC_GB_MAIN)) {
-      uint32_t rdAndAddr = *((uint32_t *)(&pio1->rxf[SMC_GB_MAIN]));
-      bool write = rdAndAddr & 0x00000001;
-      uint16_t addr = (rdAndAddr >> 1) & 0xFFFF;
-
-      if (write) {
-        uint8_t data = pio_sm_get_blocking(pio1, SMC_GB_MAIN) & 0xFF;
-      }
-    }
-  }
-}
-
-void __no_inline_not_in_flash_func(runMbc1Game)(uint8_t game,
-                                                uint16_t num_rom_banks,
-                                                uint8_t num_ram_banks) {
-  const uint8_t *gameptr = _games[game];
-  uint8_t rom_bank = 1;
-  uint8_t rom_bank_new = 1;
-  uint8_t rom_bank_high = 0;
-  uint8_t rom_bank_low = 1;
-  uint8_t ram_bank = GB_MAX_RAM_BANKS;
-  uint8_t ram_bank_new = 0;
-  uint8_t ram_bank_local = GB_MAX_RAM_BANKS;
-  bool ram_enabled = 0;
-  bool new_ram_enabled = 0;
-  bool mode_select = 0;
-  uint16_t rom_banks_mask = num_rom_banks - 1;
-
-  memcpy(memory, gameptr, GB_ROM_BANK_SIZE);
-
-  rom_high_base = &gameptr[GB_ROM_BANK_SIZE];
-
-  printf("MBC1 game loaded\n");
-  printf("initial bank %d a %x\n", rom_bank,
-         ((unsigned)gameptr + (GB_ROM_BANK_SIZE * rom_bank)));
-
-  gpio_put(PIN_GB_RESET, 0); // let the gameboy start (deassert reset line)
-
-  while (1) {
-    if (!pio_sm_is_rx_fifo_empty(pio1, SMC_GB_MAIN)) {
-      uint32_t rdAndAddr = *((uint32_t *)(&pio1->rxf[SMC_GB_MAIN]));
-      bool write = rdAndAddr & 0x00000001;
-      uint16_t addr = (rdAndAddr >> 1) & 0xFFFF;
-
-      if (write) {
-        uint8_t data = pio_sm_get_blocking(pio1, SMC_GB_MAIN) & 0xFF;
-
-        switch (addr & 0xE000) {
-        case 0x0000:
-          new_ram_enabled = ((data & 0x0F) == 0x0A);
-          break;
-
-        case 0x2000:
-          rom_bank_low = (data & 0x1F);
-          if ((rom_bank_low & 0x1F) == 0x00)
-            rom_bank_low++;
-          break;
-
-        case 0x4000:
-          if (mode_select) {
-            ram_bank_new = data & 0x03;
-          } else {
-            rom_bank_high = data & 0x03;
-          }
-          break;
-
-        case 0x6000:
-          mode_select = (data & 1);
-          // printf("mode_select %d\n", mode_select);
-          break;
-        case 0xA000: // write to RAM
-          pio0->txf[SMC_WS2812] = 0x00150000; // switch on LED to red
-          break;
-        default:
-
-          break;
-        }
-
-        if (mode_select == 0) {
-          rom_bank_new = (rom_bank_high << 5) | rom_bank_low;
-        } else {
-          rom_bank_new = rom_bank_low;
-        }
-        rom_bank_new = rom_bank_new & rom_banks_mask;
-
-        if (rom_bank != rom_bank_new) {
-          rom_bank = rom_bank_new;
-          // set_x(pio0, SMC_GB_ROM_HIGH,
-          //       ((unsigned)gameptr + (GB_ROM_BANK_SIZE * rom_bank)) >> 14);
-          rom_high_base = &gameptr[GB_ROM_BANK_SIZE * rom_bank];
-
-          // printf("bank %d a %x\n", rom_bank, ((unsigned)gameptr +
-          // (GB_ROM_BANK_SIZE * rom_bank)));
-        }
-
-        if (ram_enabled != new_ram_enabled) {
-          ram_enabled = new_ram_enabled;
-          // printf("ram_enabled %d\n", ram_enabled);
-        }
-
-        ram_bank_local = ram_enabled ? ram_bank_new : GB_MAX_RAM_BANKS;
-
-        if (ram_bank != ram_bank_local) {
-          ram_bank = ram_bank_local;
-          ram_base = &ram_memory[ram_bank * GB_RAM_BANK_SIZE];
-        }
-      }
-      // else
-      // {
-      //   if(addr == 0x0000 || addr == 0x4000)
-      //   {
-      //     printf("addr %x was loaded\n", addr);
-      //   }
-      // }
-      // dma_uart_send(".", 1);
-    }
-  }
-}
-
 void loadGame(uint8_t game) {
   uint8_t mbc = 0xFF;
   uint16_t num_rom_banks = 0;
@@ -572,6 +431,14 @@ void loadGame(uint8_t game) {
   case 0x13:
     mbc = 3;
     break;
+  case 0x19:
+  case 0x1A:
+  case 0x1B:
+  case 0x1C:
+  case 0x1D:
+  case 0x1E:
+    mbc = 5;
+    break;
   }
 
   num_rom_banks = 1 << (gameptr[0x0148] + 1);
@@ -604,6 +471,11 @@ void loadGame(uint8_t game) {
 
   _lastRunningGame = game;
 
+  if (num_ram_banks > GB_MAX_RAM_BANKS) {
+    printf("Game needs too much RAM\n");
+    return;
+  }
+
   pio_sm_put_blocking(pio0, SMC_WS2812, 0);
 
   switch (mbc) {
@@ -611,9 +483,14 @@ void loadGame(uint8_t game) {
     runNoMbcGame(game);
     break;
   case 0x01:
-    runMbc1Game(game, num_rom_banks, 0);
+    runMbc1Game(game, num_rom_banks, num_ram_banks);
     break;
-
+  case 0x03:
+    runMbc3Game(game, num_rom_banks, num_ram_banks);
+    break;
+  case 0x05:
+    runMbc5Game(game, num_rom_banks, num_ram_banks);
+    break;
   default:
     printf("Unsupported MBC!\n");
     break;
@@ -628,7 +505,7 @@ uint8_t readRamBankCount(const uint8_t *gameptr) {
     return LOOKUP[value];
   }
 
-  return 0;
+  return 0xFF;
 }
 
 void __attribute__((__noreturn__))
