@@ -49,7 +49,7 @@ const volatile uint8_t *ram_base = NULL;
 const volatile uint8_t *rom_low_base = NULL;
 const volatile uint8_t *rom_high_base = NULL;
 
-uint8_t memory[0x8000] __attribute__((aligned(GB_ROM_BANK_SIZE)));
+uint8_t memory[GB_ROM_BANK_SIZE * 2] __attribute__((aligned(GB_ROM_BANK_SIZE)));
 uint8_t __attribute__((section(".noinit.")))
 ram_memory[(GB_MAX_RAM_BANKS + 1) * GB_RAM_BANK_SIZE]
     __attribute__((aligned(GB_RAM_BANK_SIZE)));
@@ -385,6 +385,7 @@ uint8_t __no_inline_not_in_flash_func(runGbBootloader)() {
         }
 
         if (addr == 0xB010) {
+          sleep_ms(50);
           reset_usb_boot(0, 0);
         }
       }

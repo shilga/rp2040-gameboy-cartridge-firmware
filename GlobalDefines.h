@@ -26,8 +26,8 @@ extern const volatile uint8_t *ram_base;
 extern const volatile uint8_t *rom_low_base;
 extern const volatile uint8_t *rom_high_base;
 
-extern uint8_t memory[0x8000];
-extern uint8_t ram_memory[(GB_MAX_RAM_BANKS + 1) * GB_RAM_BANK_SIZE];
+extern uint8_t memory[];
+extern uint8_t ram_memory[];
 
 extern const uint8_t *_games[];
 

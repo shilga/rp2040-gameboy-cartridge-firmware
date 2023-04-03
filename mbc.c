@@ -1,37 +1,61 @@
 #include "GlobalDefines.h"
+#include "hardware/regs/clocks.h"
 
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
+#include <hardware/clocks.h>
 #include <hardware/pio.h>
+#include <hardware/structs/scb.h>
+#include <hardware/sync.h>
 #include <pico/platform.h>
 
 void __no_inline_not_in_flash_func(runNoMbcGame)(uint8_t game) {
-  memcpy(memory, _games[game], GB_ROM_BANK_SIZE);
+  memcpy(memory, _games[game], GB_ROM_BANK_SIZE * 2);
 
-  rom_high_base = &(_games[game][GB_ROM_BANK_SIZE]);
+  // rom_high_base = &(_games[game][GB_ROM_BANK_SIZE]);
 
-  // disable RAM access state machines, they are not needed anymore
-  pio_set_sm_mask_enabled(
-      pio1, (1 << SMC_GB_RAM_READ) | (1 << SMC_GB_RAM_WRITE), false);
+  // disable RAM access state machines, they are not needed without any MBC
+  pio_set_sm_mask_enabled(pio1,
+                          (1 << SMC_GB_MAIN) | (1 << SMC_GB_RAM_READ) |
+                              (1 << SMC_GB_RAM_WRITE),
+                          false);
+
+  // Turn off all clocks when in sleep mode except for RTC
+  clocks_hw->sleep_en0 =
+      CLOCKS_SLEEP_EN0_CLK_SYS_SRAM0_BITS |
+      CLOCKS_SLEEP_EN0_CLK_SYS_SRAM1_BITS |
+      CLOCKS_SLEEP_EN0_CLK_SYS_SRAM2_BITS |
+      CLOCKS_SLEEP_EN0_CLK_SYS_SRAM3_BITS | CLOCKS_SLEEP_EN0_CLK_SYS_PIO1_BITS |
+      CLOCKS_SLEEP_EN0_CLK_SYS_PIO0_BITS |
+      CLOCKS_SLEEP_EN0_CLK_SYS_PLL_SYS_BITS |
+      CLOCKS_SLEEP_EN0_CLK_SYS_BUSFABRIC_BITS |
+      CLOCKS_SLEEP_EN0_CLK_SYS_BUSCTRL_BITS |
+      CLOCKS_SLEEP_EN0_CLK_SYS_DMA_BITS | CLOCKS_SLEEP_EN0_CLK_SYS_CLOCKS_BITS;
+  // clocks_hw->sleep_en1 =
+  //     CLOCKS_SLEEP_EN1_CLK_SYS_XOSC_MSB | CLOCKS_SLEEP_EN1_CLK_SYS_XIP_BITS;
+  clocks_hw->sleep_en1 =
+      CLOCKS_SLEEP_EN1_CLK_SYS_XOSC_MSB;
+
+  (void)save_and_disable_interrupts();
 
   printf("No MBC game loaded\n");
 
   gpio_put(PIN_GB_RESET, 0); // let the gameboy start (deassert reset line)
 
-  while (1) {
-    if (!pio_sm_is_rx_fifo_empty(pio1, SMC_GB_MAIN)) {
-      uint32_t rdAndAddr = *((uint32_t *)(&pio1->rxf[SMC_GB_MAIN]));
-      bool write = rdAndAddr & 0x00000001;
-      uint16_t addr = (rdAndAddr >> 1) & 0xFFFF;
+  uint save = scb_hw->scr;
+  // Enable deep sleep at the proc
+  scb_hw->scr = save | M0PLUS_SCR_SLEEPDEEP_BITS;
 
-      if (write) {
-        uint8_t data = pio_sm_get_blocking(pio1, SMC_GB_MAIN) & 0xFF;
-      }
-    }
-  }
+  // Go to sleep (forever)
+  __wfi();
+
+  printf("awake\n");
+
+  while (1)
+    ;
 }
 
 void __no_inline_not_in_flash_func(runMbc1Game)(uint8_t game,
@@ -92,9 +116,8 @@ void __no_inline_not_in_flash_func(runMbc1Game)(uint8_t game,
         case 0x6000:
           mode_select = (data & 1);
           break;
-        case 0xA000:                          // write to RAM
-          if(!ram_dirty)
-          {
+        case 0xA000: // write to RAM
+          if (!ram_dirty) {
             pio0->txf[SMC_WS2812] = 0x00150000; // switch on LED to red
             ram_dirty = true;
           }
@@ -182,9 +205,8 @@ void __no_inline_not_in_flash_func(runMbc3Game)(uint8_t game,
         case 0x6000:
 
           break;
-        case 0xA000:                          // write to RAM
-          if(!ram_dirty)
-          {
+        case 0xA000: // write to RAM
+          if (!ram_dirty) {
             pio0->txf[SMC_WS2812] = 0x00150000; // switch on LED to red
             ram_dirty = true;
           }
@@ -270,9 +292,8 @@ void __no_inline_not_in_flash_func(runMbc5Game)(uint8_t game,
         case 0x6000:
 
           break;
-        case 0xA000:                          // write to RAM
-          if(!ram_dirty)
-          {
+        case 0xA000: // write to RAM
+          if (!ram_dirty) {
             pio0->txf[SMC_WS2812] = 0x00150000; // switch on LED to red
             ram_dirty = true;
           }
