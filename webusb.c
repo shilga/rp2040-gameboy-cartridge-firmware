@@ -14,7 +14,7 @@ static bool web_serial_connected = false;
 
 static uint8_t command_buffer[64];
 
-#define URL  "example.tinyusb.org/webusb-serial/index.html"
+#define URL  "croco.x-pantion.de"
 
 const tusb_desc_webusb_url_t desc_url =
 {
