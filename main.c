@@ -3,6 +3,7 @@
 #include <hardware/gpio.h>
 #include <hardware/pio.h>
 #include <hardware/regs/ssi.h>
+#include <hardware/sync.h>
 #include <hardware/timer.h>
 #include <hardware/vreg.h>
 #include <pico/bootrom.h>
@@ -22,25 +23,10 @@
 #include <lfs.h>
 #include <lfs_pico_hal.h>
 
-#include "roms/20y.h"
-#include "roms/Alleyway.h"
-#include "roms/DrMario.h"
 #include "roms/GbBootloader.h"
-#include "roms/Kirby.h"
-#include "roms/Othello.h"
-#include "roms/PokemonBlue.h"
-#include "roms/PokemonSilver.h"
-#include "roms/SuperMario.h"
-#include "roms/SuperMario2.h"
-#include "roms/Tetris.h"
-#include "roms/YoshisCookie.h"
-#include "roms/Zelda.h"
-// #include "roms/ZeldaDx.h"
-#include "roms/merken.h"
-#include "roms/ph-t_02.h"
-#include "roms/thebouncingball.h"
 
 #include "GlobalDefines.h"
+#include "RomStorage.h"
 
 #include "gameboy_bus.pio.h"
 #include "ws2812.pio.h"
@@ -54,37 +40,14 @@ uint8_t __attribute__((section(".noinit.")))
 ram_memory[(GB_MAX_RAM_BANKS + 1) * GB_RAM_BANK_SIZE]
     __attribute__((aligned(GB_RAM_BANK_SIZE)));
 
-const uint8_t *_games[] = {
-    (const uint8_t *)((size_t)Tetris + 0x03000000),
-    (const uint8_t *)((size_t)Dr__Mario__World__gb + 0x03000000),
-    (const uint8_t *)((size_t)Othello__Europe__gb + 0x03000000),
-    (const uint8_t *)((size_t)pht_t_02_gb + 0x03000000),
-    (const uint8_t *)((size_t)__20y_gb + 0x03000000),
-    (const uint8_t *)((size_t)merken_gb + 0x03000000),
-    (const uint8_t *)((size_t)Alleyway__World__gb + 0x03000000),
-    (const uint8_t *)((size_t)Kirby_s_Dream_Land__USA__Europe__gb + 0x03000000),
-    (const uint8_t *)((size_t)Yoshi_s_Cookie__USA__Europe__gb + 0x03000000),
-    (const uint8_t *)((size_t)THEBOUNCINGBALL_GB + 0x03000000),
-    (const uint8_t *)((size_t)Super_Mario_Land__World___Rev_A__gb + 0x03000000),
-    (const uint8_t
-         *)((size_t)Super_Mario_Land_2___6_Golden_Coins__UE___V1_2______gb +
-            0x03000000),
-    (const uint8_t
-         *)((size_t)Legend_of_Zelda__The___Link_s_Awakening__USA__Europe__gb +
-            0x03000000),
-    (const uint8_t *)((size_t)Pokemon_Blue_gb + 0x03000000),
-    (const uint8_t
-         *)((size_t)
-                Pokemon___Silver_Version__USA__Europe___SGB_Enhanced___GB_Compatible__gbc +
-            0x03000000)};
-
-size_t num_games = sizeof(_games) / sizeof(uint8_t *);
+struct ShortRomInfo g_shortRomInfos[MAX_ALLOWED_ROMS];
+uint8_t g_numRoms = 0;
 
 uint32_t __attribute__((section(".noinit."))) _noInitTest;
 uint32_t __attribute__((section(".noinit."))) _lastRunningGame;
 
-lfs_t _lfs = {};
-uint8_t _lfsFileBuffer[LFS_CACHE_SIZE];
+static lfs_t _lfs = {};
+static uint8_t _lfsFileBuffer[LFS_CACHE_SIZE];
 
 uint8_t readRamBankCount(const uint8_t *gameptr);
 
@@ -310,15 +273,18 @@ int main() {
     printf("Error creating saves directory %d\n", lfs_err);
   }
 
-  if (_lastRunningGame < num_games) {
+  RomStorage_init(&_lfs);
+
+  if (_lastRunningGame < g_numRoms) {
     printf("Game %d was running before reset\n", _lastRunningGame);
 
-    if (readRamBankCount(_games[_lastRunningGame]) > 0) {
+    if (readRamBankCount(g_shortRomInfos[_lastRunningGame].firstBank) > 0) {
       lfs_file_t file;
       struct lfs_file_config fileconfig = {.buffer = _lfsFileBuffer};
       char filenamebuffer[40] = "saves/";
-      strcpy(&filenamebuffer[strlen(filenamebuffer)],
-             (const char *)&(_games[_lastRunningGame][0x134]));
+      strcpy(
+          &filenamebuffer[strlen(filenamebuffer)],
+          (const char *)&(g_shortRomInfos[_lastRunningGame].firstBank[0x134]));
       printf("Saving game RAM to file %s\n", filenamebuffer);
 
       lfs_err = lfs_file_opencfg(&_lfs, &file, filenamebuffer,
@@ -328,9 +294,10 @@ int main() {
         printf("Error opening file %d\n", lfs_err);
       }
 
-      lfs_err = lfs_file_write(&_lfs, &file, ram_memory,
-                               readRamBankCount(_games[_lastRunningGame]) *
-                                   GB_RAM_BANK_SIZE);
+      lfs_err = lfs_file_write(
+          &_lfs, &file, ram_memory,
+          readRamBankCount(g_shortRomInfos[_lastRunningGame].firstBank) *
+              GB_RAM_BANK_SIZE);
       printf("wrote %d bytes\n", lfs_err);
 
       lfs_file_close(&_lfs, &file);
@@ -340,6 +307,8 @@ int main() {
   }
 
   uint8_t game = runGbBootloader();
+
+  (void)save_and_disable_interrupts();
 
   loadGame(game);
 
@@ -358,13 +327,15 @@ uint8_t __no_inline_not_in_flash_func(runGbBootloader)() {
 
   memset(ram, 0, GB_RAM_BANK_SIZE);
   // initialize RAM with information about roms
-  for (size_t i = 0; i < num_games; i++) {
-    memcpy(&ram[(i * 16) + 1], &(_games[i][0x134]), 16);
+  for (size_t i = 0; i < g_numRoms; i++) {
+    memcpy(&ram[(i * 16) + 1], &(g_shortRomInfos[i].name), 16);
   }
-  ram[0] = (uint8_t)num_games;
+  ram[0] = (uint8_t)g_numRoms;
   ram[0x1000] = 0xFF;
 
-  printf("Found %d games\n", num_games);
+  printf("Found %d games\n", g_numRoms);
+
+  usb_start();
 
   ram_base = ram;
 
@@ -390,7 +361,11 @@ uint8_t __no_inline_not_in_flash_func(runGbBootloader)() {
         }
       }
     }
+
+    usb_run();
   }
+
+  usb_shutdown();
 
   // hold the gameboy in reset until we have loaded the game
   gpio_put(PIN_GB_RESET, 1);
@@ -407,9 +382,9 @@ void loadGame(uint8_t game) {
   struct lfs_file_config fileconfig = {.buffer = _lfsFileBuffer};
   char filenamebuffer[40] = "saves/";
 
-  const uint8_t *gameptr = _games[game];
+  const uint8_t *gameptr = g_shortRomInfos[game].firstBank;
 
-  printf("Loading selected game info:\n");
+  printf("Loading selected game info at %p:\n", gameptr);
 
   switch (gameptr[0x0147]) {
   case 0x00:

@@ -13,7 +13,7 @@
 #include <pico/platform.h>
 
 void __no_inline_not_in_flash_func(runNoMbcGame)(uint8_t game) {
-  memcpy(memory, _games[game], GB_ROM_BANK_SIZE * 2);
+  memcpy(memory, g_shortRomInfos[game].firstBank, GB_ROM_BANK_SIZE * 2);
 
   // rom_high_base = &(_games[game][GB_ROM_BANK_SIZE]);
 
@@ -36,10 +36,7 @@ void __no_inline_not_in_flash_func(runNoMbcGame)(uint8_t game) {
       CLOCKS_SLEEP_EN0_CLK_SYS_DMA_BITS | CLOCKS_SLEEP_EN0_CLK_SYS_CLOCKS_BITS;
   // clocks_hw->sleep_en1 =
   //     CLOCKS_SLEEP_EN1_CLK_SYS_XOSC_MSB | CLOCKS_SLEEP_EN1_CLK_SYS_XIP_BITS;
-  clocks_hw->sleep_en1 =
-      CLOCKS_SLEEP_EN1_CLK_SYS_XOSC_MSB;
-
-  (void)save_and_disable_interrupts();
+  clocks_hw->sleep_en1 = CLOCKS_SLEEP_EN1_CLK_SYS_XOSC_MSB;
 
   printf("No MBC game loaded\n");
 
@@ -61,7 +58,7 @@ void __no_inline_not_in_flash_func(runNoMbcGame)(uint8_t game) {
 void __no_inline_not_in_flash_func(runMbc1Game)(uint8_t game,
                                                 uint16_t num_rom_banks,
                                                 uint8_t num_ram_banks) {
-  const uint8_t *gameptr = _games[game];
+  const uint8_t *gameptr = g_shortRomInfos[game].firstBank;
   uint8_t rom_bank = 1;
   uint8_t rom_bank_new = 1;
   uint8_t rom_bank_high = 0;
@@ -157,7 +154,7 @@ void __no_inline_not_in_flash_func(runMbc1Game)(uint8_t game,
 void __no_inline_not_in_flash_func(runMbc3Game)(uint8_t game,
                                                 uint16_t num_rom_banks,
                                                 uint8_t num_ram_banks) {
-  const uint8_t *gameptr = _games[game];
+  const uint8_t *gameptr = g_shortRomInfos[game].firstBank;
   uint8_t rom_bank = 1;
   uint8_t rom_bank_new = 1;
   uint8_t ram_bank = GB_MAX_RAM_BANKS;
@@ -241,7 +238,7 @@ void __no_inline_not_in_flash_func(runMbc3Game)(uint8_t game,
 void __no_inline_not_in_flash_func(runMbc5Game)(uint8_t game,
                                                 uint16_t num_rom_banks,
                                                 uint8_t num_ram_banks) {
-  const uint8_t *gameptr = _games[game];
+  const uint8_t *gameptr = g_shortRomInfos[game].firstBank;
   uint16_t rom_bank = 1;
   uint16_t rom_bank_new = 1;
   uint8_t ram_bank = GB_MAX_RAM_BANKS;
