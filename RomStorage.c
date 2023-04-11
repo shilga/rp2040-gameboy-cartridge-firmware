@@ -20,8 +20,10 @@
 #define ClearBit(A, k) (A[(k) / 32] &= ~(1 << ((k) % 32)))
 #define TestBit(A, k) (A[(k) / 32] & (1 << ((k) % 32)))
 
-#define MAX_BANKS 888
-#define MAX_BANKS_PER_ROM 0x200
+#define RomBankToPointer(BANK)                                                 \
+  ((const uint8_t *)((BANK * GB_ROM_BANK_SIZE) +                               \
+                     ROM_STORAGE_FLASH_START_ADDR + 0x13000000))
+
 #define TRANSFER_CHUNK_SIZE 32
 #define CHUNKS_PER_BANK (GB_ROM_BANK_SIZE / TRANSFER_CHUNK_SIZE)
 
@@ -41,6 +43,7 @@ struct __attribute__((__packed__)) RomInfoFile {
 };
 
 static struct RomInfoFile _romInfoFile;
+static struct RomInfo _romInfo;
 
 static uint8_t _bankBuffer[GB_ROM_BANK_SIZE];
 static uint16_t _lastTransferredBank = 0xFFFF;
@@ -57,7 +60,9 @@ int RomStorage_init(lfs_t *lfs) {
   struct lfs_info lfsInfo;
 
   memset(_usedBanksFlags, 0, sizeof(_usedBanksFlags));
+  memset(g_shortRomInfos, 0, sizeof(g_shortRomInfos));
   g_numRoms = 0;
+  _usedBanks = 0;
 
   lfs_err = lfs_mkdir(_lfs, "/roms");
   if ((lfs_err != LFS_ERR_OK) && (lfs_err != LFS_ERR_EXIST)) {
@@ -109,8 +114,7 @@ int RomStorage_init(lfs_t *lfs) {
       memcpy(g_shortRomInfos[g_numRoms].name, lfsInfo.name, 16);
       g_shortRomInfos[g_numRoms].name[16] = 0;
       g_shortRomInfos[g_numRoms].firstBank =
-          (const uint8_t *)((_romInfoFile.banks[0] * GB_ROM_BANK_SIZE) +
-                            ROM_STORAGE_FLASH_START_ADDR + 0x13000000);
+          RomBankToPointer(_romInfoFile.banks[0]);
       g_numRoms++;
     }
 
@@ -132,6 +136,12 @@ int RomStorage_StartNewRomTransfer(uint16_t num_banks, const char *name) {
   size_t current_search_bank = 0;
   struct lfs_info lfsInfo;
   int lfs_err;
+
+  if((g_numRoms + 1) >= MAX_ALLOWED_ROMS)
+  {
+    printf("That is more ROMs as can be handled\n");
+    return -1;
+  }
 
   if ((num_banks + _usedBanks) > MAX_BANKS) {
     printf("Not enough free banks for new ROM\n");
@@ -262,9 +272,78 @@ int RomStorage_TransferChunk(uint16_t bank, uint16_t chunk,
         return -1;
       }
 
+      RomStorage_init(_lfs); // reinit to reload ROM info
+
       _romTransferActive = false;
     }
   }
 
   return 0;
+}
+
+uint16_t RomStorage_GetNumUsedBanks() { return _usedBanks; }
+
+int RomStorage_DeleteRom(uint8_t rom) {
+  int lfs_err;
+
+  if (rom >= g_numRoms) {
+    return -1;
+  }
+
+  memcpy(&_fileNameBuffer[6], g_shortRomInfos[rom].name, 17);
+
+  printf("Deleting ROM %d, %s\n", rom, _fileNameBuffer);
+
+  lfs_err = lfs_remove(_lfs, _fileNameBuffer);
+  if (lfs_err < 0) {
+    printf("Error deleting ROM file %d\n", lfs_err);
+    return -1;
+  }
+
+  RomStorage_init(_lfs); // reinit to reload ROM info
+
+  return 0;
+}
+
+const struct RomInfo *RomStorage_LoadRom(uint8_t rom) {
+  int lfs_err;
+  lfs_file_t file;
+
+  if (rom >= g_numRoms) {
+    return NULL;
+  }
+
+  memcpy(&_fileNameBuffer[6], g_shortRomInfos[rom].name, 17);
+
+  printf("Loading ROM %d, %s\n", rom, _fileNameBuffer);
+
+  lfs_err =
+      lfs_file_opencfg(_lfs, &file, _fileNameBuffer, LFS_O_RDONLY, &fileconfig);
+  if (lfs_err != LFS_ERR_OK) {
+    printf("Error opening file %d\n", lfs_err);
+    return NULL;
+  }
+
+  lfs_err = lfs_file_read(_lfs, &file, &_romInfoFile,
+                          offsetof(struct RomInfoFile, banks));
+  if (lfs_err != offsetof(struct RomInfoFile, banks)) {
+    printf("Error reading header %d\n", lfs_err);
+    return NULL;
+  }
+
+  lfs_err = lfs_file_read(_lfs, &file, &_romInfoFile.banks,
+                          _romInfoFile.numBanks * sizeof(uint16_t));
+  if (lfs_err != _romInfoFile.numBanks * sizeof(uint16_t)) {
+    printf("Error reading banks %d\n", lfs_err);
+    return NULL;
+  }
+
+  lfs_file_close(_lfs, &file);
+
+  for (size_t i = 0; i < _romInfoFile.numBanks; i++) {
+    _romInfo.romBanks[i] = RomBankToPointer(_romInfoFile.banks[i]);
+    g_loadedRomBanks[i] = RomBankToPointer(_romInfoFile.banks[i]);
+  }
+
+  return &_romInfo;
 }

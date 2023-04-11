@@ -42,6 +42,7 @@ ram_memory[(GB_MAX_RAM_BANKS + 1) * GB_RAM_BANK_SIZE]
 
 struct ShortRomInfo g_shortRomInfos[MAX_ALLOWED_ROMS];
 uint8_t g_numRoms = 0;
+const uint8_t *g_loadedRomBanks[MAX_BANKS_PER_ROM];
 
 uint32_t __attribute__((section(".noinit."))) _noInitTest;
 uint32_t __attribute__((section(".noinit."))) _lastRunningGame;
@@ -282,9 +283,8 @@ int main() {
       lfs_file_t file;
       struct lfs_file_config fileconfig = {.buffer = _lfsFileBuffer};
       char filenamebuffer[40] = "saves/";
-      strcpy(
-          &filenamebuffer[strlen(filenamebuffer)],
-          (const char *)&(g_shortRomInfos[_lastRunningGame].firstBank[0x134]));
+      strcpy(&filenamebuffer[strlen(filenamebuffer)],
+             (const char *)&(g_shortRomInfos[_lastRunningGame].name));
       printf("Saving game RAM to file %s\n", filenamebuffer);
 
       lfs_err = lfs_file_opencfg(&_lfs, &file, filenamebuffer,
@@ -301,6 +301,8 @@ int main() {
       printf("wrote %d bytes\n", lfs_err);
 
       lfs_file_close(&_lfs, &file);
+
+      _lastRunningGame = 0xFF;
 
       pio_sm_put_blocking(pio0, SMC_WS2812, 0x150000 << 8);
     }
@@ -426,8 +428,7 @@ void loadGame(uint8_t game) {
   printf("ram banks: %d\n", num_ram_banks);
 
   if (num_ram_banks > 0) {
-    strcpy(&filenamebuffer[strlen(filenamebuffer)],
-           (const char *)&(gameptr[0x134]));
+    strcpy(&filenamebuffer[strlen(filenamebuffer)], g_shortRomInfos[game].name);
 
     int lfs_err = lfs_file_opencfg(&_lfs, &file, filenamebuffer, LFS_O_RDONLY,
                                    &fileconfig);
@@ -450,6 +451,12 @@ void loadGame(uint8_t game) {
   if (num_ram_banks > GB_MAX_RAM_BANKS) {
     printf("Game needs too much RAM\n");
     return;
+  }
+
+  if(NULL == RomStorage_LoadRom(game))
+  {
+    printf("Error reading ROM\n");
+    return; 
   }
 
   pio_sm_put_blocking(pio0, SMC_WS2812, 0);

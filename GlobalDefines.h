@@ -25,6 +25,8 @@
 
 #define ROM_STORAGE_FLASH_START_ADDR 0x00020000
 #define MAX_ALLOWED_ROMS 16
+#define MAX_BANKS 888
+#define MAX_BANKS_PER_ROM 0x200
 
 extern const volatile uint8_t *ram_base;
 extern const volatile uint8_t *rom_low_base;
@@ -40,5 +42,7 @@ struct ShortRomInfo {
 
 extern struct ShortRomInfo g_shortRomInfos[MAX_ALLOWED_ROMS];
 extern uint8_t g_numRoms;
+
+extern const uint8_t *g_loadedRomBanks[MAX_BANKS_PER_ROM];
 
 #endif /* GLOBALDEFINES_H */

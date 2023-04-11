@@ -13,7 +13,8 @@
 #include <pico/platform.h>
 
 void __no_inline_not_in_flash_func(runNoMbcGame)(uint8_t game) {
-  memcpy(memory, g_shortRomInfos[game].firstBank, GB_ROM_BANK_SIZE * 2);
+  memcpy(memory, g_loadedRomBanks[0], GB_ROM_BANK_SIZE);
+  memcpy(&memory[GB_ROM_BANK_SIZE], g_loadedRomBanks[1], GB_ROM_BANK_SIZE);
 
   // rom_high_base = &(_games[game][GB_ROM_BANK_SIZE]);
 
@@ -58,7 +59,6 @@ void __no_inline_not_in_flash_func(runNoMbcGame)(uint8_t game) {
 void __no_inline_not_in_flash_func(runMbc1Game)(uint8_t game,
                                                 uint16_t num_rom_banks,
                                                 uint8_t num_ram_banks) {
-  const uint8_t *gameptr = g_shortRomInfos[game].firstBank;
   uint8_t rom_bank = 1;
   uint8_t rom_bank_new = 1;
   uint8_t rom_bank_high = 0;
@@ -72,13 +72,12 @@ void __no_inline_not_in_flash_func(runMbc1Game)(uint8_t game,
   bool ram_dirty = 0;
   uint16_t rom_banks_mask = num_rom_banks - 1;
 
-  memcpy(memory, gameptr, GB_ROM_BANK_SIZE);
+  memcpy(memory, g_shortRomInfos[game].firstBank, GB_ROM_BANK_SIZE);
 
-  rom_high_base = &gameptr[GB_ROM_BANK_SIZE];
+  rom_high_base = g_loadedRomBanks[1];
 
   printf("MBC1 game loaded\n");
-  printf("initial bank %d a %x\n", rom_bank,
-         ((unsigned)gameptr + (GB_ROM_BANK_SIZE * rom_bank)));
+  printf("initial bank %d a %p\n", rom_bank, g_loadedRomBanks[1]);
 
   gpio_put(PIN_GB_RESET, 0); // let the gameboy start (deassert reset line)
 
@@ -133,7 +132,7 @@ void __no_inline_not_in_flash_func(runMbc1Game)(uint8_t game,
 
         if (rom_bank != rom_bank_new) {
           rom_bank = rom_bank_new;
-          rom_high_base = &gameptr[GB_ROM_BANK_SIZE * rom_bank];
+          rom_high_base = g_loadedRomBanks[rom_bank];
         }
 
         if (ram_enabled != new_ram_enabled) {
@@ -154,7 +153,6 @@ void __no_inline_not_in_flash_func(runMbc1Game)(uint8_t game,
 void __no_inline_not_in_flash_func(runMbc3Game)(uint8_t game,
                                                 uint16_t num_rom_banks,
                                                 uint8_t num_ram_banks) {
-  const uint8_t *gameptr = g_shortRomInfos[game].firstBank;
   uint8_t rom_bank = 1;
   uint8_t rom_bank_new = 1;
   uint8_t ram_bank = GB_MAX_RAM_BANKS;
@@ -165,13 +163,12 @@ void __no_inline_not_in_flash_func(runMbc3Game)(uint8_t game,
   bool ram_dirty = 0;
   uint16_t rom_banks_mask = num_rom_banks - 1;
 
-  memcpy(memory, gameptr, GB_ROM_BANK_SIZE);
+  memcpy(memory, g_shortRomInfos[game].firstBank, GB_ROM_BANK_SIZE);
 
-  rom_high_base = &gameptr[GB_ROM_BANK_SIZE];
+  rom_high_base = g_loadedRomBanks[1];
 
   printf("MBC3 game loaded\n");
-  printf("initial bank %d a %x\n", rom_bank,
-         ((unsigned)gameptr + (GB_ROM_BANK_SIZE * rom_bank)));
+  printf("initial bank %d a %p\n", rom_bank, g_loadedRomBanks[1]);
 
   gpio_put(PIN_GB_RESET, 0); // let the gameboy start (deassert reset line)
 
@@ -217,7 +214,7 @@ void __no_inline_not_in_flash_func(runMbc3Game)(uint8_t game,
 
         if (rom_bank != rom_bank_new) {
           rom_bank = rom_bank_new;
-          rom_high_base = &gameptr[GB_ROM_BANK_SIZE * rom_bank];
+          rom_high_base = g_loadedRomBanks[rom_bank];
         }
 
         if (ram_enabled != new_ram_enabled) {
@@ -238,7 +235,6 @@ void __no_inline_not_in_flash_func(runMbc3Game)(uint8_t game,
 void __no_inline_not_in_flash_func(runMbc5Game)(uint8_t game,
                                                 uint16_t num_rom_banks,
                                                 uint8_t num_ram_banks) {
-  const uint8_t *gameptr = g_shortRomInfos[game].firstBank;
   uint16_t rom_bank = 1;
   uint16_t rom_bank_new = 1;
   uint8_t ram_bank = GB_MAX_RAM_BANKS;
@@ -250,13 +246,12 @@ void __no_inline_not_in_flash_func(runMbc5Game)(uint8_t game,
   const uint16_t rom_banks_mask = num_rom_banks - 1;
   const uint8_t ram_banks_mask = num_ram_banks - 1;
 
-  memcpy(memory, gameptr, GB_ROM_BANK_SIZE);
+  memcpy(memory, g_shortRomInfos[game].firstBank, GB_ROM_BANK_SIZE);
 
-  rom_high_base = &gameptr[GB_ROM_BANK_SIZE];
+  rom_high_base = g_loadedRomBanks[1];
 
   printf("MBC5 game loaded\n");
-  printf("initial bank %d a %x\n", rom_bank,
-         ((unsigned)gameptr + (GB_ROM_BANK_SIZE * rom_bank)));
+  printf("initial bank %d a %p\n", rom_bank, g_loadedRomBanks[1]);
 
   gpio_put(PIN_GB_RESET, 0); // let the gameboy start (deassert reset line)
 
@@ -305,7 +300,7 @@ void __no_inline_not_in_flash_func(runMbc5Game)(uint8_t game,
 
         if (rom_bank != rom_bank_new) {
           rom_bank = rom_bank_new;
-          rom_high_base = &gameptr[GB_ROM_BANK_SIZE * rom_bank];
+          rom_high_base = g_loadedRomBanks[rom_bank];
         }
 
         if (ram_enabled != new_ram_enabled) {
