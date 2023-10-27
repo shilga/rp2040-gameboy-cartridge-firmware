@@ -15,13 +15,16 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <stdio_ext.h>
 #include <string.h>
 #include <sys/_types.h>
 
 #include <lfs.h>
-#include <lfs_pico_hal.h>
+#include <lfs_pico_hal.h> 
+
+#include <git_commit.h>
 
 #include "roms/GbBootloader.h"
 
@@ -172,7 +175,7 @@ int main() {
 
   stdio_uart_init_full(uart0, 1000000, 28, -1);
 
-  printf("Hello World!\n");
+  printf("Hello RP2040 Croco Cartridge %s-%s(%s)\n", git_Branch(), git_Describe(), git_AnyUncommittedChanges() ? "dirty" : "");
 
   printf("SSI->BAUDR: %x\n", *((uint32_t *)(XIP_SSI_BASE + SSI_BAUDR_OFFSET)));
 
@@ -320,19 +323,32 @@ int main() {
   }
 }
 
+__attribute__((packed)) struct SharedGameboyData
+{
+  uint32_t git_sha1;
+  uint8_t git_status;
+  uint8_t number_of_roms;
+  uint8_t rom_names;
+};
+
 uint8_t __no_inline_not_in_flash_func(runGbBootloader)() {
   uint8_t selectedGame = 0xFF;
   // use spare RAM bank to not overwrite potential save
   uint8_t *ram = &ram_memory[GB_MAX_RAM_BANKS * GB_RAM_BANK_SIZE];
+  struct SharedGameboyData* shared_data = (void*)ram;
 
   memcpy(memory, bootloader_gb, bootloader_gb_len);
-
   memset(ram, 0, GB_RAM_BANK_SIZE);
+
+  shared_data->git_sha1 = strtoul(git_Describe(), NULL, 16);
+  shared_data->git_status = git_AnyUncommittedChanges();
+
   // initialize RAM with information about roms
+  uint8_t* pRomNames = &shared_data->rom_names;
   for (size_t i = 0; i < g_numRoms; i++) {
-    memcpy(&ram[(i * 16) + 1], &(g_shortRomInfos[i].name), 16);
+    memcpy(&pRomNames[i * 16], &(g_shortRomInfos[i].name), 16);
   }
-  ram[0] = (uint8_t)g_numRoms;
+  shared_data->number_of_roms = g_numRoms;
   ram[0x1000] = 0xFF;
 
   printf("Found %d games\n", g_numRoms);
