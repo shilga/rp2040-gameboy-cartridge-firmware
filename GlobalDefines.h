@@ -20,8 +20,8 @@
 
 #define GB_RAM_BANK_SIZE 0x2000U
 #define GB_ROM_BANK_SIZE 0x4000U
-/* 8 banks = 64K of RAM enough for MBC3 (32K) and most of MBC5*/
-#define GB_MAX_RAM_BANKS 8
+/* 16 banks = 128K of RAM enough for MBC3 (32K) and MBC5*/
+#define GB_MAX_RAM_BANKS 16
 
 #define ROM_STORAGE_FLASH_START_ADDR 0x00020000
 #define MAX_ALLOWED_ROMS 16
