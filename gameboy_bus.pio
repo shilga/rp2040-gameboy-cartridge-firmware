@@ -98,7 +98,7 @@ public write_wrap:                                      ; *** WRITE state machin
 public high_wrap_target:
     jmp !y pullandpush ; if A14 is low back to idle, y is 0 in this case, which does not push to data
 public entry_point_write_to_data:
-    set y 1 ; set y so pulled data will be pushed to pins
+    set y 1 ; set y so pulled data will allways be pushed to pins
 
 public low_wrap_target:
     ; both state machines end up here after they have determined if they should push the received data
@@ -115,28 +115,20 @@ pullandpush:
     wait 1 gpio PIN_CLK                     ; wait for clk
     out  pindirs 8                         ; stop driving the data bus
 public write_to_data_wrap:
-    jmp delay
-
-idle:
-    wait 0 gpio PIN_CLK                     ; wait for clk
+    jmp idle
 
 public entry_point:
-    wait 1 gpio PIN_CLK[2]                     ; wait for clk
-
-delay:
-    set  y 30[4]
-loop:
-    jmp  y-- loop[1]                       ; delay to let adress pins become available
-    jmp  pin idle                       ; if A15 is high not interested
+idle:
+    wait 1 gpio PIN_A15
+    set y 0
+    wait 0 gpio PIN_A15
 
     in   pins 15                     ; shift rd and A0 to A13 pins into ISR
     in   null 18           ; fill up ISR and shift rd pin out
     push
-    
-    in pins 1 ; shift in RD pin
-    mov y isr ; store rd pin in y
-    jmp  y-- pullandpush ; if not read back to idle, y was 1 in this case so it is 0 after this instruction, which does not push to data
 
+    jmp pin pullandpush ; if rd pin is high go back to idle, y is 0 at this point, which pulls the data but does not push it
+    
     in pins 16 ; shift in rd and A0 to A14
     in null 31 ; 16 + 1 + 14 shift rd and lower addr pins out of isr. A14 is at pos 0 afterwards
     mov y isr ; store A14 in y
@@ -216,7 +208,7 @@ public low_wrap: ; low rom state machine wraps here
 
     void gameboy_bus_rom_low_program_init(PIO pio, uint sm, uint offset) {
         pio_sm_config c = gameboy_bus_rom_program_get_default_config(offset);
-        sm_config_set_jmp_pin (&c, PIN_A15);
+        sm_config_set_jmp_pin (&c, PIN_RD);
         sm_config_set_in_pins(&c, PIN_AD_BASE-1);
         sm_config_set_in_shift( &c, true, false, 32);  // shift right=true, auto-push=false
 
@@ -234,7 +226,7 @@ public low_wrap: ; low rom state machine wraps here
 
     void gameboy_bus_rom_high_program_init(PIO pio, uint sm, uint offset) {
         pio_sm_config c = gameboy_bus_rom_program_get_default_config(offset);
-        sm_config_set_jmp_pin (&c, PIN_A15);
+        sm_config_set_jmp_pin (&c, PIN_RD);
         sm_config_set_in_pins(&c, PIN_AD_BASE-1);
         sm_config_set_in_shift( &c, true, false, 32);  // shift right=true, auto-push=false
 
