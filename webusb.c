@@ -30,6 +30,8 @@ static int handle_new_rom_command(uint8_t buff[63]);
 static int handle_rom_upload_command(uint8_t buff[63]);
 static int handle_request_rom_info_command(uint8_t buff[63]);
 static int handle_delete_rom_command(uint8_t buff[63]);
+static int handle_request_savegame_download_command(uint8_t buff[63]);
+static int handle_savegame_transfer_chunk_command(uint8_t buff[63]);
 
 void usb_start() { tusb_init(); }
 
@@ -158,6 +160,14 @@ static void handle_command(uint8_t command) {
   case 5:
     response_length = handle_delete_rom_command(&command_buffer[1]);
     break;
+  case 6:
+    response_length =
+        handle_request_savegame_download_command(&command_buffer[1]);
+    break;
+  case 7:
+    response_length =
+        handle_savegame_transfer_chunk_command(&command_buffer[1]);
+    break;
   default:
     printf("webusb: unknown command\n");
     response_length = -1;
@@ -231,8 +241,9 @@ static int handle_request_rom_info_command(uint8_t buff[63]) {
   }
 
   memcpy(buff, &g_shortRomInfos[requestedRom].name, 17);
+  buff[17] = g_shortRomInfos[requestedRom].numRamBanks;
 
-  return 17;
+  return 18;
 }
 
 static int handle_delete_rom_command(uint8_t buff[63]) {
@@ -250,4 +261,36 @@ static int handle_delete_rom_command(uint8_t buff[63]) {
   }
 
   return 1;
+}
+
+static int handle_request_savegame_download_command(uint8_t buff[63]) {
+  uint32_t count = tud_vendor_read(buff, 1);
+  if (count != 1) {
+    printf("wrong number of bytes for rom delete command\n");
+    return -1;
+  }
+
+  uint8_t requestedRom = buff[0];
+
+  buff[0] = 0;
+  if (RomStorage_StartRamUpload(requestedRom) < 0) {
+    buff[0] = 1;
+  }
+
+  return 1;
+}
+
+static int handle_savegame_transfer_chunk_command(uint8_t buff[63]) {
+  uint16_t bank, chunk;
+
+  if (RomStorage_TransferRamChunk(&buff[4], &bank, &chunk) < 0) {
+    return -1;
+  }
+
+  buff[0] = (bank >> 8) & 0xFFU;
+  buff[1] = bank & 0xFFU;
+  buff[2] = (chunk >> 8) & 0xFFU;
+  buff[3] = chunk & 0xFFU;
+
+  return 36;
 }

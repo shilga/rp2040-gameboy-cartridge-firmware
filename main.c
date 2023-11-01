@@ -15,14 +15,14 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdlib.h>
 #include <stdio.h>
 #include <stdio_ext.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/_types.h>
 
 #include <lfs.h>
-#include <lfs_pico_hal.h> 
+#include <lfs_pico_hal.h>
 
 #include <git_commit.h>
 
@@ -52,8 +52,6 @@ uint32_t __attribute__((section(".noinit."))) _lastRunningGame;
 
 static lfs_t _lfs = {};
 static uint8_t _lfsFileBuffer[LFS_CACHE_SIZE];
-
-uint8_t readRamBankCount(const uint8_t *gameptr);
 
 uint8_t runGbBootloader();
 void loadGame(uint8_t game);
@@ -175,7 +173,8 @@ int main() {
 
   stdio_uart_init_full(uart0, 1000000, 28, -1);
 
-  printf("Hello RP2040 Croco Cartridge %s-%s(%s)\n", git_Branch(), git_Describe(), git_AnyUncommittedChanges() ? "dirty" : "");
+  printf("Hello RP2040 Croco Cartridge %s-%s(%s)\n", git_Branch(),
+         git_Describe(), git_AnyUncommittedChanges() ? "dirty" : "");
 
   printf("SSI->BAUDR: %x\n", *((uint32_t *)(XIP_SSI_BASE + SSI_BAUDR_OFFSET)));
 
@@ -282,7 +281,7 @@ int main() {
   if (_lastRunningGame < g_numRoms) {
     printf("Game %d was running before reset\n", _lastRunningGame);
 
-    if (readRamBankCount(g_shortRomInfos[_lastRunningGame].firstBank) > 0) {
+    if (g_shortRomInfos[_lastRunningGame].numRamBanks > 0) {
       lfs_file_t file;
       struct lfs_file_config fileconfig = {.buffer = _lfsFileBuffer};
       char filenamebuffer[40] = "saves/";
@@ -297,10 +296,9 @@ int main() {
         printf("Error opening file %d\n", lfs_err);
       }
 
-      lfs_err = lfs_file_write(
-          &_lfs, &file, ram_memory,
-          readRamBankCount(g_shortRomInfos[_lastRunningGame].firstBank) *
-              GB_RAM_BANK_SIZE);
+      lfs_err = lfs_file_write(&_lfs, &file, ram_memory,
+                               g_shortRomInfos[_lastRunningGame].numRamBanks *
+                                   GB_RAM_BANK_SIZE);
       printf("wrote %d bytes\n", lfs_err);
 
       lfs_file_close(&_lfs, &file);
@@ -323,8 +321,7 @@ int main() {
   }
 }
 
-__attribute__((packed)) struct SharedGameboyData
-{
+struct __attribute__((packed)) SharedGameboyData {
   uint32_t git_sha1;
   uint8_t git_status;
   uint8_t number_of_roms;
@@ -335,7 +332,7 @@ uint8_t __no_inline_not_in_flash_func(runGbBootloader)() {
   uint8_t selectedGame = 0xFF;
   // use spare RAM bank to not overwrite potential save
   uint8_t *ram = &ram_memory[GB_MAX_RAM_BANKS * GB_RAM_BANK_SIZE];
-  struct SharedGameboyData* shared_data = (void*)ram;
+  struct SharedGameboyData *shared_data = (void *)ram;
 
   memcpy(memory, bootloader_gb, bootloader_gb_len);
   memset(ram, 0, GB_RAM_BANK_SIZE);
@@ -344,7 +341,7 @@ uint8_t __no_inline_not_in_flash_func(runGbBootloader)() {
   shared_data->git_status = git_AnyUncommittedChanges();
 
   // initialize RAM with information about roms
-  uint8_t* pRomNames = &shared_data->rom_names;
+  uint8_t *pRomNames = &shared_data->rom_names;
   for (size_t i = 0; i < g_numRoms; i++) {
     memcpy(&pRomNames[i * 16], &(g_shortRomInfos[i].name), 16);
   }
@@ -436,7 +433,7 @@ void loadGame(uint8_t game) {
   }
 
   num_rom_banks = 1 << (gameptr[0x0148] + 1);
-  num_ram_banks = readRamBankCount(gameptr);
+  num_ram_banks = g_shortRomInfos[game].numRamBanks;
 
   printf("MBC:       %d\n", mbc);
   printf("name:      %s\n", (const char *)&gameptr[0x134]);
@@ -469,10 +466,9 @@ void loadGame(uint8_t game) {
     return;
   }
 
-  if(NULL == RomStorage_LoadRom(game))
-  {
+  if (NULL == RomStorage_LoadRom(game)) {
     printf("Error reading ROM\n");
-    return; 
+    return;
   }
 
   pio_sm_put_blocking(pio0, SMC_WS2812, 0);
@@ -494,17 +490,6 @@ void loadGame(uint8_t game) {
     printf("Unsupported MBC!\n");
     break;
   }
-}
-
-uint8_t readRamBankCount(const uint8_t *gameptr) {
-  static const uint8_t LOOKUP[] = {0, 0, 1, 4, 16, 8};
-  const uint8_t value = gameptr[0x0149];
-
-  if (value <= sizeof(LOOKUP)) {
-    return LOOKUP[value];
-  }
-
-  return 0xFF;
 }
 
 void __attribute__((__noreturn__))

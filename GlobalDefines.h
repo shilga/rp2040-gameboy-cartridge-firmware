@@ -38,6 +38,7 @@ extern uint8_t ram_memory[];
 struct ShortRomInfo {
   char name[17];
   const uint8_t *firstBank;
+  uint8_t numRamBanks;
 };
 
 extern struct ShortRomInfo g_shortRomInfos[MAX_ALLOWED_ROMS];

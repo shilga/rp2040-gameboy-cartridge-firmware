@@ -1,5 +1,7 @@
 #include "RomStorage.h"
 
+#include "GameBoyHeader.h"
+
 #include "lfs.h"
 #include <assert.h>
 #include <stdbool.h>
@@ -30,6 +32,7 @@
 static lfs_t *_lfs = NULL;
 static uint8_t _lfsFileBuffer[LFS_CACHE_SIZE];
 struct lfs_file_config fileconfig = {.buffer = _lfsFileBuffer};
+lfs_file_t _ramTransferFile;
 
 static uint32_t
     _usedBanksFlags[28]; // 888 banks, 32 per uint32, 1 bit for each bank
@@ -49,8 +52,13 @@ static uint8_t _bankBuffer[GB_ROM_BANK_SIZE];
 static uint16_t _lastTransferredBank = 0xFFFF;
 static uint16_t _lastTransferredChunk = 0xFFFF;
 static char _fileNameBuffer[25] = "/roms/";
+static char _filenamebufferSaves[40] = "saves/";
+
+static size_t _ramBytesTransferred = 0;
+static uint8_t _ramTransferCurrentRom = 0xFFU;
 
 static bool _romTransferActive = false;
+static bool _ramTransferActive = false;
 
 int RomStorage_init(lfs_t *lfs) {
   int lfs_err = 0;
@@ -58,6 +66,7 @@ int RomStorage_init(lfs_t *lfs) {
   lfs_dir_t dir;
   lfs_file_t file;
   struct lfs_info lfsInfo;
+  const uint8_t *firstBankPointer;
 
   memset(_usedBanksFlags, 0, sizeof(_usedBanksFlags));
   memset(g_shortRomInfos, 0, sizeof(g_shortRomInfos));
@@ -113,8 +122,10 @@ int RomStorage_init(lfs_t *lfs) {
 
       memcpy(g_shortRomInfos[g_numRoms].name, lfsInfo.name, 16);
       g_shortRomInfos[g_numRoms].name[16] = 0;
-      g_shortRomInfos[g_numRoms].firstBank =
-          RomBankToPointer(_romInfoFile.banks[0]);
+      firstBankPointer = RomBankToPointer(_romInfoFile.banks[0]);
+      g_shortRomInfos[g_numRoms].firstBank = firstBankPointer;
+      g_shortRomInfos[g_numRoms].numRamBanks =
+          GameBoyHeader_readRamBankCount(firstBankPointer);
       g_numRoms++;
     }
 
@@ -137,8 +148,7 @@ int RomStorage_StartNewRomTransfer(uint16_t num_banks, const char *name) {
   struct lfs_info lfsInfo;
   int lfs_err;
 
-  if((g_numRoms + 1) >= MAX_ALLOWED_ROMS)
-  {
+  if ((g_numRoms + 1) >= MAX_ALLOWED_ROMS) {
     printf("That is more ROMs as can be handled\n");
     return -1;
   }
@@ -305,11 +315,82 @@ int RomStorage_DeleteRom(uint8_t rom) {
   return 0;
 }
 
+int RomStorage_StartRamUpload(uint8_t rom) {
+  int lfs_err;
+
+  if (_romTransferActive) {
+    return -1;
+  }
+
+  if (_ramTransferActive) {
+    return -2;
+  }
+
+  if (rom >= g_numRoms) {
+    return -3;
+  }
+
+  if (g_shortRomInfos[rom].numRamBanks == 0) {
+    return -3;
+  }
+
+  _ramTransferActive = true;
+  _ramTransferCurrentRom = rom;
+
+  memcpy(&_filenamebufferSaves[6], g_shortRomInfos[rom].name, 17);
+
+  printf("Loading savefile %d, %s\n", rom, _filenamebufferSaves);
+
+  lfs_err = lfs_file_opencfg(_lfs, &_ramTransferFile, _filenamebufferSaves,
+                             LFS_O_RDONLY, &fileconfig);
+
+  if (lfs_err != LFS_ERR_OK) {
+    printf("Error opening file %d\n", lfs_err);
+    return -4;
+  }
+
+  _ramBytesTransferred = 0;
+
+  return 0;
+}
+
+int RomStorage_TransferRamChunk(uint8_t data[32], uint16_t *bank,
+                                uint16_t *chunk) {
+  int lfs_err;
+
+  lfs_err = lfs_file_read(_lfs, &_ramTransferFile, data, 32);
+
+  if (lfs_err != 32) {
+    printf("Error reading RAM chunk %d\n", lfs_err);
+    return -4;
+  }
+
+  *bank = _ramBytesTransferred / GB_RAM_BANK_SIZE;
+  *chunk = (_ramBytesTransferred - (*bank * GB_RAM_BANK_SIZE)) / 32;
+
+  _ramBytesTransferred += 32;
+
+  if (_ramBytesTransferred >=
+      g_shortRomInfos[_ramTransferCurrentRom].numRamBanks * GB_RAM_BANK_SIZE) {
+    printf("RAM transfer finished\n");
+
+    lfs_file_close(_lfs, &_ramTransferFile);
+
+    _ramBytesTransferred = 0;
+    _ramTransferCurrentRom = 0xFFU;
+    _ramTransferActive = false;
+  }
+}
+
 const struct RomInfo *RomStorage_LoadRom(uint8_t rom) {
   int lfs_err;
   lfs_file_t file;
 
   if (rom >= g_numRoms) {
+    return NULL;
+  }
+
+  if (_romTransferActive) {
     return NULL;
   }
 

@@ -16,7 +16,7 @@ target_compile_definitions(littlefs-lib PUBLIC LFS_NO_MALLOC LFS_YES_TRACE)
 
 add_subdirectory(libs/git-commit-tracking)
 
-add_executable(${PROJECT_NAME} main.c mbc.c webusb.c usb_descriptors.c RomStorage.c)
+add_executable(${PROJECT_NAME} main.c mbc.c webusb.c usb_descriptors.c RomStorage.c GameBoyHeader.c)
 
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/generated)
 

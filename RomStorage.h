@@ -23,6 +23,11 @@ uint16_t RomStorage_GetNumUsedBanks();
 
 int RomStorage_DeleteRom(uint8_t rom);
 
+int RomStorage_StartRamUpload(uint8_t rom);
+
+int RomStorage_TransferRamChunk(uint8_t data[32], uint16_t *bank,
+                                uint16_t *chunk);
+
 const struct RomInfo *RomStorage_LoadRom(uint8_t rom);
 
 #endif /* ROMSTORAGE_H_ */
