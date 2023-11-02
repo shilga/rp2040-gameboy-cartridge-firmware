@@ -15,15 +15,11 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "GameBoyHeader.h"
+#ifndef E061E307_529F_4C99_8F82_77C4236D159B
+#define E061E307_529F_4C99_8F82_77C4236D159B
 
-uint8_t GameBoyHeader_readRamBankCount(const uint8_t *gameptr) {
-  static const uint8_t LOOKUP[] = {0, 0, 1, 4, 16, 8};
-  const uint8_t value = gameptr[0x0149];
+void usb_start();
+void usb_shutdown();
+void usb_run();
 
-  if (value <= sizeof(LOOKUP)) {
-    return LOOKUP[value];
-  }
-
-  return 0xFF;
-}
+#endif /* E061E307_529F_4C99_8F82_77C4236D159B */

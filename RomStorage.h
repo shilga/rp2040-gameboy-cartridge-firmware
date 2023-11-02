@@ -1,5 +1,22 @@
-#ifndef ROMSTORAGE_H_
-#define ROMSTORAGE_H_
+/* RP2040 GameBoy cartridge
+ * Copyright (C) 2023 Sebastian Quilitz
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+#ifndef D05D89A4_C956_401B_9A8D_564BE51C4811
+#define D05D89A4_C956_401B_9A8D_564BE51C4811
 
 #include "GlobalDefines.h"
 #include <lfs.h>
@@ -30,4 +47,4 @@ int RomStorage_TransferRamChunk(uint8_t data[32], uint16_t *bank,
 
 const struct RomInfo *RomStorage_LoadRom(uint8_t rom);
 
-#endif /* ROMSTORAGE_H_ */
+#endif /* D05D89A4_C956_401B_9A8D_564BE51C4811 */
