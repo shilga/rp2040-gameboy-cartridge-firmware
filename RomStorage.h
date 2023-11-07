@@ -33,8 +33,8 @@ int RomStorage_init(lfs_t *lfs);
 
 int RomStorage_StartNewRomTransfer(uint16_t num_banks, const char *name);
 
-int RomStorage_TransferChunk(uint16_t bank, uint16_t chunk,
-                             const uint8_t data[32]);
+int RomStorage_TransferRomChunk(uint16_t bank, uint16_t chunk,
+                                const uint8_t data[32]);
 
 uint16_t RomStorage_GetNumUsedBanks();
 
@@ -42,8 +42,13 @@ int RomStorage_DeleteRom(uint8_t rom);
 
 int RomStorage_StartRamUpload(uint8_t rom);
 
-int RomStorage_TransferRamChunk(uint8_t data[32], uint16_t *bank,
-                                uint16_t *chunk);
+int RomStorage_GetRamDownloadChunk(uint8_t data[32], uint16_t *bank,
+                                   uint16_t *chunk);
+
+int RomStorage_StartRamDownload(uint8_t rom);
+
+int RomStorage_TransferRamUploadChunk(uint16_t bank, uint16_t chunk,
+                                      const uint8_t data[32]);
 
 const struct RomInfo *RomStorage_LoadRom(uint8_t rom);
 

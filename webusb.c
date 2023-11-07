@@ -48,7 +48,9 @@ static int handle_rom_upload_command(uint8_t buff[63]);
 static int handle_request_rom_info_command(uint8_t buff[63]);
 static int handle_delete_rom_command(uint8_t buff[63]);
 static int handle_request_savegame_download_command(uint8_t buff[63]);
-static int handle_savegame_transfer_chunk_command(uint8_t buff[63]);
+static int handle_savegame_transmit_chunk_command(uint8_t buff[63]);
+static int handle_request_savegame_upload_command(uint8_t buff[63]);
+static int handle_savegame_received_chunk_command(uint8_t buff[63]);
 
 void usb_start() { tusb_init(); }
 
@@ -183,7 +185,15 @@ static void handle_command(uint8_t command) {
     break;
   case 7:
     response_length =
-        handle_savegame_transfer_chunk_command(&command_buffer[1]);
+        handle_savegame_transmit_chunk_command(&command_buffer[1]);
+    break;
+  case 8:
+    response_length =
+        handle_request_savegame_upload_command(&command_buffer[1]);
+    break;
+  case 9:
+    response_length =
+        handle_savegame_received_chunk_command(&command_buffer[1]);
     break;
   default:
     printf("webusb: unknown command\n");
@@ -237,7 +247,8 @@ static int handle_rom_upload_command(uint8_t buff[63]) {
   chunk = (buff[2] << 8) + buff[3];
 
   buff[0] = 0;
-  if (RomStorage_TransferChunk(bank, chunk, &buff[sizeof(uint16_t) * 2]) < 0) {
+  if (RomStorage_TransferRomChunk(bank, chunk, &buff[sizeof(uint16_t) * 2]) <
+      0) {
     buff[0] = 1;
   }
 
@@ -251,7 +262,7 @@ static int handle_request_rom_info_command(uint8_t buff[63]) {
     return -1;
   }
 
-  uint8_t requestedRom = buff[0];
+  const uint8_t requestedRom = buff[0];
 
   if (requestedRom >= g_numRoms) {
     return -1;
@@ -270,7 +281,7 @@ static int handle_delete_rom_command(uint8_t buff[63]) {
     return -1;
   }
 
-  uint8_t requestedRom = buff[0];
+  const uint8_t requestedRom = buff[0];
 
   buff[0] = 0;
   if (RomStorage_DeleteRom(requestedRom) < 0) {
@@ -287,20 +298,20 @@ static int handle_request_savegame_download_command(uint8_t buff[63]) {
     return -1;
   }
 
-  uint8_t requestedRom = buff[0];
+  const uint8_t requestedRom = buff[0];
 
   buff[0] = 0;
-  if (RomStorage_StartRamUpload(requestedRom) < 0) {
+  if (RomStorage_StartRamDownload(requestedRom) < 0) {
     buff[0] = 1;
   }
 
   return 1;
 }
 
-static int handle_savegame_transfer_chunk_command(uint8_t buff[63]) {
+static int handle_savegame_transmit_chunk_command(uint8_t buff[63]) {
   uint16_t bank, chunk;
 
-  if (RomStorage_TransferRamChunk(&buff[4], &bank, &chunk) < 0) {
+  if (RomStorage_GetRamDownloadChunk(&buff[4], &bank, &chunk) < 0) {
     return -1;
   }
 
@@ -310,4 +321,42 @@ static int handle_savegame_transfer_chunk_command(uint8_t buff[63]) {
   buff[3] = chunk & 0xFFU;
 
   return 36;
+}
+
+static int handle_request_savegame_upload_command(uint8_t buff[63]) {
+  uint32_t count = tud_vendor_read(buff, 1);
+  if (count != 1) {
+    printf("wrong number of bytes for savegame upload command\n");
+    return -1;
+  }
+
+  const uint8_t requestedRom = buff[0];
+
+  buff[0] = 0;
+  if (RomStorage_StartRamUpload(requestedRom) < 0) {
+    buff[0] = 1;
+  }
+
+  return 1;
+}
+
+static int handle_savegame_received_chunk_command(uint8_t buff[63]) {
+  uint16_t bank, chunk;
+
+  uint32_t count = tud_vendor_read(buff, 36);
+  if (count != 36) {
+    printf("wrong number of bytes for savegame chunk, got %u\n", count);
+    return -1;
+  }
+
+  bank = (buff[0] << 8) + buff[1];
+  chunk = (buff[2] << 8) + buff[3];
+
+  buff[0] = 0;
+  if (RomStorage_TransferRamUploadChunk(bank, chunk,
+                                        &buff[sizeof(uint16_t) * 2]) < 0) {
+    buff[0] = 1;
+  }
+
+  return 1;
 }
