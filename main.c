@@ -43,7 +43,7 @@
 
 #include <git_commit.h>
 
-#include "roms/GbBootloader.h"
+#include "gb-bootloader/gbbootloader.h"
 
 #include "GlobalDefines.h"
 #include "RomStorage.h"
@@ -352,7 +352,7 @@ uint8_t __no_inline_not_in_flash_func(runGbBootloader)() {
   uint8_t *ram = &ram_memory[GB_MAX_RAM_BANKS * GB_RAM_BANK_SIZE];
   struct SharedGameboyData *shared_data = (void *)ram;
 
-  memcpy(memory, bootloader_gb, bootloader_gb_len);
+  memcpy(memory, GB_BOOTLOADER, GB_BOOTLOADER_SIZE);
   memset(ram, 0, GB_RAM_BANK_SIZE);
 
   shared_data->git_sha1 = strtoul(git_Describe(), NULL, 16);

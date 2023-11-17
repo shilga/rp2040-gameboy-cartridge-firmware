@@ -1,10 +1,9 @@
 {
-    "image": "lukstep/raspberry-pi-pico-sdk:latest",
-    "name": "GBCartridgeDevContainer",
-    "customizations": {
-      "vscode": {
-        "extensions": ["llvm-vs-code-extensions.vscode-clangd"]
-      }
-    },
-    "postCreateCommand": "apk add clang-extra-tools"
+  "image": "shilga/raspberry-pi-pico-gbdk-docker:v0.1",
+  "name": "GBCartridgeDevContainer",
+  "customizations": {
+    "vscode": {
+      "extensions": ["llvm-vs-code-extensions.vscode-clangd"]
+    }
   }
+}
