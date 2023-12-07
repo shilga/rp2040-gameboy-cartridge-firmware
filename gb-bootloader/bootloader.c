@@ -21,6 +21,16 @@ const palette_color_t backgroundpalette[] = {RGB_WHITE, RGB_YELLOW, RGB_BROWN,
                                              RGB_BLACK};
 
 UINT8 _cursor = 0;
+UINT8 _cursorLines = 0;
+
+UINT8 buttonPressed(UINT8 input, UINT8 key) {
+  if (input & key) {
+    waitpadup();
+
+    return TRUE;
+  }
+  return FALSE;
+}
 
 void ClearCursor() {
   gotoxy(1, _cursor + 1);
@@ -32,13 +42,22 @@ void RenderCursor() {
   setchar('>');
 }
 
-UINT8 buttonPressed(UINT8 input, UINT8 key) {
-  if (input & key) {
-    waitpadup();
-
-    return TRUE;
+void moveCursor(UINT8 input) {
+  if (buttonPressed(input, J_UP)) {
+    if (_cursor > 0) {
+      ClearCursor();
+      _cursor--;
+      RenderCursor();
+    }
   }
-  return FALSE;
+
+  if (buttonPressed(input, J_DOWN)) {
+    if (_cursor < _cursorLines - 1) {
+      ClearCursor();
+      _cursor++;
+      RenderCursor();
+    }
+  }
 }
 
 struct SharedGameboyData {
@@ -78,7 +97,7 @@ void main() {
 
   while (1) {
 
-    if (renderMenu) {
+    if (renderMenu == 1) {
       font_set(font);
 
       cls();
@@ -100,6 +119,8 @@ void main() {
           printf("%s", text);
         }
 
+        _cursorLines = gameCount;
+        _cursor = 0;
         RenderCursor();
       } else {
         gotoxy(2, 2);
@@ -112,21 +133,7 @@ void main() {
     if (gameCount != 0) {
       input = joypad();
 
-      if (buttonPressed(input, J_UP)) {
-        if (_cursor > 0) {
-          ClearCursor();
-          _cursor--;
-          RenderCursor();
-        }
-      }
-
-      if (buttonPressed(input, J_DOWN)) {
-        if (_cursor < gameCount - 1) {
-          ClearCursor();
-          _cursor++;
-          RenderCursor();
-        }
-      }
+      moveCursor(input);
 
       if (buttonPressed(input, J_A)) {
         (*(UBYTE *)(0xB000)) = _cursor;
@@ -138,6 +145,10 @@ void main() {
     }
 
     if (buttonPressed(input, J_SELECT)) {
+      renderMenu = 2;
+    }
+
+    if (renderMenu == 2) {
       cls();
       set_bkg_tiles(0, 0, 20, 18, giraffe_4color_map);
 
@@ -149,7 +160,7 @@ void main() {
         printf(" dirty");
       }
 
-      while (renderMenu == 0) {
+      while (renderMenu == 2) {
         input = joypad();
 
         if (buttonPressed(input, J_START)) {
@@ -163,6 +174,9 @@ void main() {
             wait_vbl_done();
           }
         }
+        if (buttonPressed(input, J_RIGHT)) {
+          renderMenu = 3;
+        }
         if (buttonPressed(input, J_SELECT)) {
           renderMenu = 1;
         }
@@ -170,6 +184,42 @@ void main() {
       }
     }
 
-    wait_vbl_done();
+    if (renderMenu == 3) {
+      cls();
+      gotoxy(0, 0);
+      printf("Test LED:");
+      gotoxy(2, 1);
+      printf("Off");
+      gotoxy(2, 2);
+      printf("Red");
+      gotoxy(2, 3);
+      printf("Green");
+      gotoxy(2, 4);
+      printf("Blue");
+      _cursorLines = 4;
+      _cursor = 0;
+      RenderCursor();
+
+      while (renderMenu == 3) {
+        input = joypad();
+
+        moveCursor(input);
+
+        if (buttonPressed(input, J_A)) {
+          (*(UBYTE *)(0xB001)) = _cursor;
+        }
+        if (buttonPressed(input, J_LEFT)) {
+          renderMenu = 2;
+        }
+        if (buttonPressed(input, J_SELECT)) {
+          renderMenu = 1;
+        }
+
+        wait_vbl_done();
+      }
+      (*(UBYTE *)(0xB001)) = 0;
+    }
   }
+
+  wait_vbl_done();
 }

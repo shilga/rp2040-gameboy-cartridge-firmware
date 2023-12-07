@@ -387,6 +387,22 @@ uint8_t __no_inline_not_in_flash_func(runGbBootloader)() {
           printf("Selected Game: %d\n", data);
           selectedGame = data;
         }
+        if (addr == 0xB001) {
+          switch (data) {
+          case 1:
+            pio_sm_put_blocking(pio0, SMC_WS2812, 0x001500 << 8);
+            break;
+          case 2:
+            pio_sm_put_blocking(pio0, SMC_WS2812, 0x150000 << 8);
+            break;
+          case 3:
+            pio_sm_put_blocking(pio0, SMC_WS2812, 0x000015 << 8);
+            break;
+          default:
+            pio_sm_put_blocking(pio0, SMC_WS2812, 0);
+            break;
+          }
+        }
 
         if (addr == 0xB010) {
           sleep_ms(50);
