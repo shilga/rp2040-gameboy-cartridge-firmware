@@ -219,7 +219,7 @@ void main() {
       }
       (*(UBYTE *)(0xB001)) = 0;
     }
-  }
 
-  wait_vbl_done();
+    wait_vbl_done();
+  }
 }
