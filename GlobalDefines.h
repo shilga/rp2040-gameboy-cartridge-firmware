@@ -45,9 +45,9 @@
 #define MAX_BANKS 888
 #define MAX_BANKS_PER_ROM 0x200
 
-extern const volatile uint8_t *ram_base;
-extern const volatile uint8_t *rom_low_base;
-extern const volatile uint8_t *rom_high_base;
+extern const volatile uint8_t *volatile ram_base;
+extern const volatile uint8_t *volatile rom_low_base;
+extern const volatile uint8_t *volatile rom_high_base;
 
 extern uint8_t memory[];
 extern uint8_t ram_memory[];

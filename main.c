@@ -52,9 +52,9 @@
 #include "gameboy_bus.pio.h"
 #include "ws2812.pio.h"
 
-const volatile uint8_t *ram_base = NULL;
-const volatile uint8_t *rom_low_base = NULL;
-const volatile uint8_t *rom_high_base = NULL;
+const volatile uint8_t *volatile ram_base = NULL;
+const volatile uint8_t *volatile rom_low_base = NULL;
+const volatile uint8_t *volatile rom_high_base = NULL;
 
 uint8_t memory[GB_ROM_BANK_SIZE * 2] __attribute__((aligned(GB_ROM_BANK_SIZE)));
 uint8_t __attribute__((section(".noinit.")))

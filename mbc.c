@@ -100,7 +100,7 @@ void __no_inline_not_in_flash_func(runMbc1Game)(uint8_t game,
 
   while (1) {
     if (!pio_sm_is_rx_fifo_empty(pio1, SMC_GB_MAIN)) {
-      uint32_t rdAndAddr = *((uint32_t *)(&pio1->rxf[SMC_GB_MAIN]));
+      uint32_t rdAndAddr = pio_sm_get_blocking(pio1, SMC_GB_MAIN);
       bool write = rdAndAddr & 0x00000001;
       uint16_t addr = (rdAndAddr >> 1) & 0xFFFF;
 
@@ -191,7 +191,7 @@ void __no_inline_not_in_flash_func(runMbc3Game)(uint8_t game,
 
   while (1) {
     if (!pio_sm_is_rx_fifo_empty(pio1, SMC_GB_MAIN)) {
-      uint32_t rdAndAddr = *((uint32_t *)(&pio1->rxf[SMC_GB_MAIN]));
+      uint32_t rdAndAddr = pio_sm_get_blocking(pio1, SMC_GB_MAIN);
       bool write = rdAndAddr & 0x00000001;
       uint16_t addr = (rdAndAddr >> 1) & 0xFFFF;
 
@@ -274,7 +274,7 @@ void __no_inline_not_in_flash_func(runMbc5Game)(uint8_t game,
 
   while (1) {
     if (!pio_sm_is_rx_fifo_empty(pio1, SMC_GB_MAIN)) {
-      uint32_t rdAndAddr = *((uint32_t *)(&pio1->rxf[SMC_GB_MAIN]));
+      uint32_t rdAndAddr = pio_sm_get_blocking(pio1, SMC_GB_MAIN);
       bool write = rdAndAddr & 0x00000001;
       uint16_t addr = (rdAndAddr >> 1) & 0xFFFF;
 
