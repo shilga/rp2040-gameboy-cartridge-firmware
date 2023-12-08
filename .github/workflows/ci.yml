@@ -51,4 +51,4 @@ jobs:
       with:
         name: binaries
         path: |
-          $GITHUB_WORKSPACE/build
+          ${{env.GITHUB_WORKSPACE}}/build
