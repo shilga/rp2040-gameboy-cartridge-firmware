@@ -4,7 +4,7 @@ name: CI - Build on changes in Docker container
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ "master", "dev" ]
   pull_request:
     branches: [ "master" ]
 
@@ -33,6 +33,12 @@ jobs:
       # Build your program with the given configuration
       run: |
         git config --global --add safe.directory "$GITHUB_WORKSPACE"
-        cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+        echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+        cmake --build ${{env.GITHUB_WORKSPACE}}/build --config ${{env.BUILD_TYPE}}
 
-
+    - name: Archive artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: binaries
+        path: |
+          ${{env.GITHUB_WORKSPACE}}/build
