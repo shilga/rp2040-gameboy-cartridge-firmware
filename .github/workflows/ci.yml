@@ -33,7 +33,7 @@ jobs:
         echo "GITHUB_WORKSPACE = $GITHUB_WORKSPACE"
         echo 'runner.workspace = ${{ runner.workspace }}'
         echo "RUNNER_WORKSPACE = $RUNNER_WORKSPACE"
-        cmake -B ${{env.GITHUB_WORKSPACE}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+        cmake -B $GITHUB_WORKSPACE/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
 
     - name: Build
       # Build your program with the given configuration
@@ -44,7 +44,7 @@ jobs:
         echo "GITHUB_WORKSPACE = $GITHUB_WORKSPACE"
         echo 'runner.workspace = ${{ runner.workspace }}'
         echo "RUNNER_WORKSPACE = $RUNNER_WORKSPACE"
-        cmake --build ${{env.GITHUB_WORKSPACE}}/build --config ${{env.BUILD_TYPE}}
+        cmake --build $GITHUB_WORKSPACE/build --config ${{env.BUILD_TYPE}}
 
     - name: Archive artifacts
       uses: actions/upload-artifact@v3
