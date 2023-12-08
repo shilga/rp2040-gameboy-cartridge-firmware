@@ -49,7 +49,7 @@ jobs:
     - name: Archive artifacts
       uses: actions/upload-artifact@v3
       with:
-        name: binaries
+        name: rp2040cartridge-artifact-$GITHUB_SHA
         path: |
           ${{env.GITHUB_WORKSPACE}}/build/*.bin
           ${{env.GITHUB_WORKSPACE}}/build/*.elf
