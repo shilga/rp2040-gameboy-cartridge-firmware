@@ -51,4 +51,8 @@ jobs:
       with:
         name: binaries
         path: |
-          ${{env.GITHUB_WORKSPACE}}/build
+          ${{env.GITHUB_WORKSPACE}}/build/*.bin
+          ${{env.GITHUB_WORKSPACE}}/build/*.elf
+          ${{env.GITHUB_WORKSPACE}}/build/*.elf.map
+          ${{env.GITHUB_WORKSPACE}}/build/*.hex
+          ${{env.GITHUB_WORKSPACE}}/build/*.uf2
