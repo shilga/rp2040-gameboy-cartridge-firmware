@@ -32,8 +32,7 @@
 #define SMC_GB_ROM_LOW 0
 #define SMC_GB_ROM_HIGH 1
 #define SMC_GB_WRITE_DATA 2
-
-#define SMC_WS2812 3
+#define SMC_GB_A15LOW_A14IRQS 3
 
 #define GB_RAM_BANK_SIZE 0x2000U
 #define GB_ROM_BANK_SIZE 0x4000U
@@ -44,6 +43,8 @@
 #define MAX_ALLOWED_ROMS 16
 #define MAX_BANKS 888
 #define MAX_BANKS_PER_ROM 0x200
+
+extern unsigned int offset_main;
 
 extern const volatile uint8_t *volatile ram_base;
 extern const volatile uint8_t *volatile rom_low_base;

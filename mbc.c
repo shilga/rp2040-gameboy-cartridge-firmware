@@ -29,6 +29,8 @@
 #include <hardware/sync.h>
 #include <pico/platform.h>
 
+void detect_speed_change(uint16_t addr, uint16_t rom_bank);
+
 void __no_inline_not_in_flash_func(runNoMbcGame)(uint8_t game) {
   memcpy(memory, g_loadedRomBanks[0], GB_ROM_BANK_SIZE);
   memcpy(&memory[GB_ROM_BANK_SIZE], g_loadedRomBanks[1], GB_ROM_BANK_SIZE);
@@ -131,7 +133,7 @@ void __no_inline_not_in_flash_func(runMbc1Game)(uint8_t game,
           break;
         case 0xA000: // write to RAM
           if (!ram_dirty) {
-            pio0->txf[SMC_WS2812] = 0x00150000; // switch on LED to red
+            // pio0->txf[SMC_WS2812] = 0x00150000; // switch on LED to red
             ram_dirty = true;
           }
           break;
@@ -218,7 +220,7 @@ void __no_inline_not_in_flash_func(runMbc3Game)(uint8_t game,
           break;
         case 0xA000: // write to RAM
           if (!ram_dirty) {
-            pio0->txf[SMC_WS2812] = 0x00150000; // switch on LED to red
+            // pio0->txf[SMC_WS2812] = 0x00150000; // switch on LED to red
             ram_dirty = true;
           }
           break;
@@ -303,7 +305,7 @@ void __no_inline_not_in_flash_func(runMbc5Game)(uint8_t game,
           break;
         case 0xA000: // write to RAM
           if (!ram_dirty) {
-            pio0->txf[SMC_WS2812] = 0x00150000; // switch on LED to red
+            // pio0->txf[SMC_WS2812] = 0x00150000; // switch on LED to red
             ram_dirty = true;
           }
           break;
@@ -331,6 +333,56 @@ void __no_inline_not_in_flash_func(runMbc5Game)(uint8_t game,
           ram_base = &ram_memory[ram_bank * GB_RAM_BANK_SIZE];
         }
       }
+      else { // read
+        detect_speed_change(addr, rom_bank);
+      }
     }
+  }
+}
+
+enum eDETECT_SPEED_CHANGE_STATE {
+  SPEED_CHANGE_IDLE,
+  SPEED_CHANGE_LDH,
+  SPEED_CHANGE_KEY1,
+} _speedChangeState = SPEED_CHANGE_IDLE;
+
+void __no_inline_not_in_flash_func(detect_speed_change)(uint16_t addr,
+                                                        uint16_t rom_bank) {
+  uint8_t data = 0;
+  switch (addr & 0xC000) {
+  case 0x0000:
+    data = memory[addr & 0x3FFFU];
+    break;
+  case 0x4000:
+    data = g_loadedRomBanks[rom_bank][addr & 0x3FFFU];
+    break;
+  default:
+    break;
+  }
+
+  switch (data) {
+  case 0xe0: // LDH
+    if (_speedChangeState == SPEED_CHANGE_IDLE) {
+      _speedChangeState = SPEED_CHANGE_LDH;
+    }
+    break;
+  case 0x4d: // LDH KEY1,A
+    if (_speedChangeState == SPEED_CHANGE_LDH) {
+      _speedChangeState = SPEED_CHANGE_KEY1;
+    }
+    break;
+  case 0x10: // STOP
+    if (_speedChangeState == SPEED_CHANGE_KEY1) {
+      // speed change is triggered
+      _speedChangeState = SPEED_CHANGE_IDLE;
+      loadDoubleSpeedPio();
+      // ws2812b_setRgb(0, 0, 0x10);
+    }
+    break;
+  default:
+    if (_speedChangeState == SPEED_CHANGE_LDH) {
+      _speedChangeState = SPEED_CHANGE_IDLE;
+    }
+    break;
   }
 }

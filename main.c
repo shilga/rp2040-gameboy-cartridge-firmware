@@ -50,7 +50,8 @@
 #include "webusb.h"
 
 #include "gameboy_bus.pio.h"
-#include "ws2812.pio.h"
+
+uint offset_main;
 
 const volatile uint8_t *volatile ram_base = NULL;
 const volatile uint8_t *volatile rom_low_base = NULL;
@@ -185,11 +186,11 @@ int main() {
   {
     vreg_set_voltage(VREG_VOLTAGE_1_15);
     sleep_ms(2);
-    set_sys_clock_khz(266000, true);
+    set_sys_clock_khz(280000, true);
     sleep_ms(2);
   }
 
-  stdio_uart_init_full(uart0, 1000000, 28, -1);
+  // stdio_uart_init_full(uart0, 1000000, 28, -1);
 
   printf("Hello RP2040 Croco Cartridge %s-%s(%s)\n", git_Branch(),
          git_Describe(), git_AnyUncommittedChanges() ? "dirty" : "");
@@ -200,9 +201,7 @@ int main() {
   gpio_set_dir(PIN_GB_RESET, true);
   gpio_put(PIN_GB_RESET, 1);
 
-  // gpio_init(28);
-  // gpio_set_dir(28, true);
-  // pio_gpio_init(pio0, 28);
+  pio_gpio_init(pio1, 28);
 
   for (uint pin = PIN_AD_BASE - 1; pin < PIN_AD_BASE + 25; pin++) {
     // gpio_init(pin);
@@ -222,12 +221,14 @@ int main() {
   }
 
   // Load the gameboy_bus programs into it's respective PIOs
-  uint offset_main = pio_add_program(pio1, &gameboy_bus_program);
+  offset_main = pio_add_program(pio1, &gameboy_bus_program);
   uint offset_detect_a14 =
       pio_add_program(pio1, &gameboy_bus_detect_a14_program);
   uint offset_ram = pio_add_program(pio1, &gameboy_bus_ram_program);
 
+  uint offset_write_data = pio_add_program(pio0, &gameboy_bus_write_to_data_program);
   uint offset_rom = pio_add_program(pio0, &gameboy_bus_rom_program);
+  uint offset_a14_irqs = pio_add_program(pio0, &gameboy_bus_detect_a15_low_a14_irqs_program);
 
   // Initialize all gameboy state machines
   gameboy_bus_program_init(pio1, SMC_GB_MAIN, offset_main);
@@ -236,9 +237,10 @@ int main() {
   gameboy_bus_ram_read_program_init(pio1, SMC_GB_RAM_READ, offset_ram);
   gameboy_bus_ram_write_program_init(pio1, SMC_GB_RAM_WRITE, offset_ram);
 
+  gameboy_bus_detect_a15_low_a14_irqs_init(pio0, SMC_GB_A15LOW_A14IRQS, offset_a14_irqs);
   gameboy_bus_rom_low_program_init(pio0, SMC_GB_ROM_LOW, offset_rom);
   gameboy_bus_rom_high_program_init(pio0, SMC_GB_ROM_HIGH, offset_rom);
-  gameboy_bus_write_to_data_program_init(pio0, SMC_GB_WRITE_DATA, offset_rom);
+  gameboy_bus_write_to_data_program_init(pio0, SMC_GB_WRITE_DATA, offset_write_data);
 
   // initialze base pointers with some default values before initialzizing the
   // DMAs
@@ -249,9 +251,9 @@ int main() {
   setup_read_dma_method2(pio1, SMC_GB_RAM_READ, pio0, SMC_GB_WRITE_DATA,
                          &ram_base);
   setup_write_dma_method2(pio1, SMC_GB_RAM_WRITE, &ram_base);
-  setup_read_dma_method2(pio0, SMC_GB_ROM_HIGH, pio0, SMC_GB_ROM_HIGH,
+  setup_read_dma_method2(pio0, SMC_GB_ROM_HIGH, pio0, SMC_GB_WRITE_DATA,
                          &rom_high_base);
-  setup_read_dma_method2(pio0, SMC_GB_ROM_LOW, pio0, SMC_GB_ROM_LOW,
+  setup_read_dma_method2(pio0, SMC_GB_ROM_LOW, pio0, SMC_GB_WRITE_DATA,
                          &rom_low_base);
 
   // enable all gameboy state machines
@@ -263,10 +265,7 @@ int main() {
   pio_sm_set_enabled(pio0, SMC_GB_ROM_LOW, true);
   pio_sm_set_enabled(pio0, SMC_GB_ROM_HIGH, true);
   pio_sm_set_enabled(pio0, SMC_GB_WRITE_DATA, true);
-
-  // load and start the WS8212 StateMachine to control the RGB LED
-  uint offset = pio_add_program(pio0, &ws2812_program);
-  ws2812_program_init(pio0, SMC_WS2812, offset, WS2812_PIN, 800000, false);
+  pio_sm_set_enabled(pio0, SMC_GB_A15LOW_A14IRQS, true);
 
   if (_noInitTest != 0xcafeaffe) {
     _noInitTest = 0xcafeaffe;
@@ -323,11 +322,12 @@ int main() {
 
       _lastRunningGame = 0xFF;
 
-      pio_sm_put_blocking(pio0, SMC_WS2812, 0x150000 << 8);
+      // pio_sm_put_blocking(pio0, SMC_WS2812, 0x150000 << 8);
     }
   }
 
   uint8_t game = runGbBootloader();
+  //uint8_t game = 5; // 11: Zelda DX, 5: Repugnant, 8: Tetris, 9: Yoshi
 
   (void)save_and_disable_interrupts();
 
@@ -390,16 +390,16 @@ uint8_t __no_inline_not_in_flash_func(runGbBootloader)() {
         if (addr == 0xB001) {
           switch (data) {
           case 1:
-            pio_sm_put_blocking(pio0, SMC_WS2812, 0x001500 << 8);
+            // pio_sm_put_blocking(pio0, SMC_WS2812, 0x001500 << 8);
             break;
           case 2:
-            pio_sm_put_blocking(pio0, SMC_WS2812, 0x150000 << 8);
+            // pio_sm_put_blocking(pio0, SMC_WS2812, 0x150000 << 8);
             break;
           case 3:
-            pio_sm_put_blocking(pio0, SMC_WS2812, 0x000015 << 8);
+            // pio_sm_put_blocking(pio0, SMC_WS2812, 0x000015 << 8);
             break;
           default:
-            pio_sm_put_blocking(pio0, SMC_WS2812, 0);
+            // pio_sm_put_blocking(pio0, SMC_WS2812, 0);
             break;
           }
         }
@@ -505,7 +505,7 @@ void loadGame(uint8_t game) {
     return;
   }
 
-  pio_sm_put_blocking(pio0, SMC_WS2812, 0);
+  // pio_sm_put_blocking(pio0, SMC_WS2812, 0);
 
   switch (mbc) {
   case 0x00:
@@ -524,6 +524,15 @@ void loadGame(uint8_t game) {
     printf("Unsupported MBC!\n");
     break;
   }
+}
+
+void loadDoubleSpeedPio()
+{
+  pio_sm_set_enabled(pio1, SMC_GB_MAIN, false);
+  pio_remove_program(pio1, &gameboy_bus_program, offset_main);
+  offset_main = pio_add_program(pio1, &gameboy_bus_double_speed_program);
+  gameboy_bus_program_init(pio1, SMC_GB_MAIN, offset_main);
+  pio_sm_set_enabled(pio1, SMC_GB_MAIN, true);
 }
 
 void __attribute__((__noreturn__))
