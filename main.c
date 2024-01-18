@@ -45,6 +45,7 @@
 
 #include "gb-bootloader/gbbootloader.h"
 
+#include "GbDma.h"
 #include "GlobalDefines.h"
 #include "RomStorage.h"
 #include "webusb.h"
@@ -201,7 +202,9 @@ int main() {
   gpio_set_dir(PIN_GB_RESET, true);
   gpio_put(PIN_GB_RESET, 1);
 
-  pio_gpio_init(pio1, 28);
+  pio_gpio_init(pio0, 28);
+  // gpio_init(PIN_UART_TX);
+  // gpio_set_dir(PIN_UART_TX, true);
 
   for (uint pin = PIN_AD_BASE - 1; pin < PIN_AD_BASE + 25; pin++) {
     // gpio_init(pin);
@@ -226,9 +229,11 @@ int main() {
       pio_add_program(pio1, &gameboy_bus_detect_a14_program);
   uint offset_ram = pio_add_program(pio1, &gameboy_bus_ram_program);
 
-  uint offset_write_data = pio_add_program(pio0, &gameboy_bus_write_to_data_program);
+  uint offset_write_data =
+      pio_add_program(pio0, &gameboy_bus_write_to_data_program);
   uint offset_rom = pio_add_program(pio0, &gameboy_bus_rom_program);
-  uint offset_a14_irqs = pio_add_program(pio0, &gameboy_bus_detect_a15_low_a14_irqs_program);
+  uint offset_a14_irqs =
+      pio_add_program(pio0, &gameboy_bus_detect_a15_low_a14_irqs_program);
 
   // Initialize all gameboy state machines
   gameboy_bus_program_init(pio1, SMC_GB_MAIN, offset_main);
@@ -237,10 +242,12 @@ int main() {
   gameboy_bus_ram_read_program_init(pio1, SMC_GB_RAM_READ, offset_ram);
   gameboy_bus_ram_write_program_init(pio1, SMC_GB_RAM_WRITE, offset_ram);
 
-  gameboy_bus_detect_a15_low_a14_irqs_init(pio0, SMC_GB_A15LOW_A14IRQS, offset_a14_irqs);
+  gameboy_bus_detect_a15_low_a14_irqs_init(pio0, SMC_GB_A15LOW_A14IRQS,
+                                           offset_a14_irqs);
   gameboy_bus_rom_low_program_init(pio0, SMC_GB_ROM_LOW, offset_rom);
   gameboy_bus_rom_high_program_init(pio0, SMC_GB_ROM_HIGH, offset_rom);
-  gameboy_bus_write_to_data_program_init(pio0, SMC_GB_WRITE_DATA, offset_write_data);
+  gameboy_bus_write_to_data_program_init(pio0, SMC_GB_WRITE_DATA,
+                                         offset_write_data);
 
   // initialze base pointers with some default values before initialzizing the
   // DMAs
@@ -248,13 +255,15 @@ int main() {
   rom_low_base = memory;
   rom_high_base = &memory[GB_ROM_BANK_SIZE];
 
-  setup_read_dma_method2(pio1, SMC_GB_RAM_READ, pio0, SMC_GB_WRITE_DATA,
-                         &ram_base);
-  setup_write_dma_method2(pio1, SMC_GB_RAM_WRITE, &ram_base);
+  GbDma_Setup();
+
+  // setup_read_dma_method2(pio1, SMC_GB_RAM_READ, pio0, SMC_GB_WRITE_DATA,
+  //                        &ram_base);
+  // setup_write_dma_method2(pio1, SMC_GB_RAM_WRITE, &ram_base);
   setup_read_dma_method2(pio0, SMC_GB_ROM_HIGH, pio0, SMC_GB_WRITE_DATA,
                          &rom_high_base);
-  setup_read_dma_method2(pio0, SMC_GB_ROM_LOW, pio0, SMC_GB_WRITE_DATA,
-                         &rom_low_base);
+  // setup_read_dma_method2(pio0, SMC_GB_ROM_LOW, pio0, SMC_GB_WRITE_DATA,
+  //                        &rom_low_base);
 
   // enable all gameboy state machines
   pio_sm_set_enabled(pio1, SMC_GB_MAIN, true);
@@ -327,7 +336,7 @@ int main() {
   }
 
   uint8_t game = runGbBootloader();
-  //uint8_t game = 5; // 11: Zelda DX, 5: Repugnant, 8: Tetris, 9: Yoshi
+  // uint8_t game = 5; // 11: Zelda DX, 5: Repugnant, 8: Tetris, 9: Yoshi
 
   (void)save_and_disable_interrupts();
 
@@ -526,8 +535,7 @@ void loadGame(uint8_t game) {
   }
 }
 
-void loadDoubleSpeedPio()
-{
+void loadDoubleSpeedPio() {
   pio_sm_set_enabled(pio1, SMC_GB_MAIN, false);
   pio_remove_program(pio1, &gameboy_bus_program, offset_main);
   offset_main = pio_add_program(pio1, &gameboy_bus_double_speed_program);

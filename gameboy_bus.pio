@@ -122,8 +122,8 @@ public write_wrap:                                      ; *** WRITE state machin
 .program gameboy_bus_write_to_data
 .side_set 1 opt
 .wrap_target
-    pull block   side 0                              ; pull the data from the Tx FIFO into the OSR
-    out  pins 8  side 1                              ; output 8 bits of data
+    pull block                                 ; pull the data from the Tx FIFO into the OSR
+    out  pins 8  side 0                             ; output 8 bits of data
     mov  osr ~NULL                             ; OSR=FFFFFFFF
     wait 0 gpio PIN_CLK                        ; wait for clk
     out  pindirs 8                             ; start driving the data bus
@@ -151,7 +151,7 @@ idle:
     wait 1 irq 0 rel ; will wait on irq 0 on SM0 (low) and irq 1 on SM1 (high)
     jmp pin idle ; on reads back to idle
 
-    in   pins 14          ; shift A0 to A13 pins into ISR and auto push
+    in   pins 14  side 1        ; shift A0 to A13 pins into ISR and auto push
     .wrap
 
 
