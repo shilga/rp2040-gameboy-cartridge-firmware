@@ -145,7 +145,7 @@ a14_high:
     .wrap
 
 
-.program gameboy_bus_rom
+.program gameboy_bus_rom_low
 .side_set 1 opt
 idle:
     wait 1 irq 0 rel ; will wait on irq 0 on SM0 (low) and irq 1 on SM1 (high)
@@ -154,6 +154,16 @@ idle:
     in   pins 14  side 1        ; shift A0 to A13 pins into ISR and auto push
     .wrap
 
+
+.program gameboy_bus_rom_high
+.side_set 1 opt
+idle:
+    wait 1 irq 0 rel ; will wait on irq 0 on SM0 (low) and irq 1 on SM1 (high)
+    jmp pin idle ; on reads back to idle
+
+    in   pins 14  side 1        ; shift A0 to A13 pins into ISR and auto push
+    in null 8
+    .wrap
 
 % c-sdk {
 
@@ -229,7 +239,7 @@ idle:
     }
 
     void gameboy_bus_rom_low_program_init(PIO pio, uint sm, uint offset) {
-        pio_sm_config c = gameboy_bus_rom_program_get_default_config(offset);
+        pio_sm_config c = gameboy_bus_rom_low_program_get_default_config(offset);
         sm_config_set_jmp_pin (&c, PIN_RD);
         sm_config_set_in_pins(&c, PIN_AD_BASE);
         sm_config_set_in_shift( &c, false, true, 14);  // shift right=false, auto-push=true
@@ -242,10 +252,10 @@ idle:
     }
 
     void gameboy_bus_rom_high_program_init(PIO pio, uint sm, uint offset) {
-        pio_sm_config c = gameboy_bus_rom_program_get_default_config(offset);
+        pio_sm_config c = gameboy_bus_rom_high_program_get_default_config(offset);
         sm_config_set_jmp_pin (&c, PIN_RD);
         sm_config_set_in_pins(&c, PIN_AD_BASE);
-        sm_config_set_in_shift( &c, false, true, 14);  // shift right=false, auto-push=true
+        sm_config_set_in_shift( &c, false, true, 22);  // shift right=false, auto-push=true
         
 
         sm_config_set_sideset_pins(&c, PIN_UART_TX);

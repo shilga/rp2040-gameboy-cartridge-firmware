@@ -20,6 +20,7 @@
 #include <hardware/gpio.h>
 #include <hardware/pio.h>
 #include <hardware/regs/ssi.h>
+#include <hardware/structs/ssi.h>
 #include <hardware/sync.h>
 #include <hardware/timer.h>
 #include <hardware/vreg.h>
@@ -57,6 +58,7 @@ uint offset_main;
 const volatile uint8_t *volatile ram_base = NULL;
 const volatile uint8_t *volatile rom_low_base = NULL;
 const volatile uint8_t *volatile rom_high_base = NULL;
+volatile uint32_t rom_high_base_flash_direct = 0;
 
 uint8_t memory[GB_ROM_BANK_SIZE * 2] __attribute__((aligned(GB_ROM_BANK_SIZE)));
 uint8_t __attribute__((section(".noinit.")))
@@ -66,6 +68,7 @@ ram_memory[(GB_MAX_RAM_BANKS + 1) * GB_RAM_BANK_SIZE]
 struct ShortRomInfo g_shortRomInfos[MAX_ALLOWED_ROMS];
 uint8_t g_numRoms = 0;
 const uint8_t *g_loadedRomBanks[MAX_BANKS_PER_ROM];
+uint32_t g_loadedDirectAccessRomBanks[MAX_BANKS_PER_ROM];
 
 uint32_t __attribute__((section(".noinit."))) _noInitTest;
 uint32_t __attribute__((section(".noinit."))) _lastRunningGame;
@@ -231,7 +234,8 @@ int main() {
 
   uint offset_write_data =
       pio_add_program(pio0, &gameboy_bus_write_to_data_program);
-  uint offset_rom = pio_add_program(pio0, &gameboy_bus_rom_program);
+  uint offset_rom_low = pio_add_program(pio0, &gameboy_bus_rom_low_program);
+  uint offset_rom_high = pio_add_program(pio0, &gameboy_bus_rom_high_program);
   uint offset_a14_irqs =
       pio_add_program(pio0, &gameboy_bus_detect_a15_low_a14_irqs_program);
 
@@ -244,8 +248,8 @@ int main() {
 
   gameboy_bus_detect_a15_low_a14_irqs_init(pio0, SMC_GB_A15LOW_A14IRQS,
                                            offset_a14_irqs);
-  gameboy_bus_rom_low_program_init(pio0, SMC_GB_ROM_LOW, offset_rom);
-  gameboy_bus_rom_high_program_init(pio0, SMC_GB_ROM_HIGH, offset_rom);
+  gameboy_bus_rom_low_program_init(pio0, SMC_GB_ROM_LOW, offset_rom_low);
+  gameboy_bus_rom_high_program_init(pio0, SMC_GB_ROM_HIGH, offset_rom_high);
   gameboy_bus_write_to_data_program_init(pio0, SMC_GB_WRITE_DATA,
                                          offset_write_data);
 
@@ -256,12 +260,13 @@ int main() {
   rom_high_base = &memory[GB_ROM_BANK_SIZE];
 
   GbDma_Setup();
+  GbDma_SetupHigherDmaDirectSsi();
 
   // setup_read_dma_method2(pio1, SMC_GB_RAM_READ, pio0, SMC_GB_WRITE_DATA,
   //                        &ram_base);
   // setup_write_dma_method2(pio1, SMC_GB_RAM_WRITE, &ram_base);
-  setup_read_dma_method2(pio0, SMC_GB_ROM_HIGH, pio0, SMC_GB_WRITE_DATA,
-                         &rom_high_base);
+  // setup_read_dma_method2(pio0, SMC_GB_ROM_HIGH, pio0, SMC_GB_WRITE_DATA,
+  //                        &rom_high_base);
   // setup_read_dma_method2(pio0, SMC_GB_ROM_LOW, pio0, SMC_GB_WRITE_DATA,
   //                        &rom_low_base);
 
@@ -272,7 +277,6 @@ int main() {
   pio_sm_set_enabled(pio1, SMC_GB_RAM_WRITE, true);
 
   pio_sm_set_enabled(pio0, SMC_GB_ROM_LOW, true);
-  pio_sm_set_enabled(pio0, SMC_GB_ROM_HIGH, true);
   pio_sm_set_enabled(pio0, SMC_GB_WRITE_DATA, true);
   pio_sm_set_enabled(pio0, SMC_GB_A15LOW_A14IRQS, true);
 
@@ -541,6 +545,21 @@ void loadDoubleSpeedPio() {
   offset_main = pio_add_program(pio1, &gameboy_bus_double_speed_program);
   gameboy_bus_program_init(pio1, SMC_GB_MAIN, offset_main);
   pio_sm_set_enabled(pio1, SMC_GB_MAIN, true);
+}
+
+void __no_inline_not_in_flash_func(setSsi8bit)() {
+  __compiler_memory_barrier();
+
+  ssi_hw->ssienr = 0; // disable SSI so it can be configured
+  ssi_hw->ctrlr0 =
+      (SSI_CTRLR0_SPI_FRF_VALUE_QUAD /* Quad I/O mode */
+       << SSI_CTRLR0_SPI_FRF_LSB) |
+      (7 << SSI_CTRLR0_DFS_32_LSB) |     /* 8 data bits */
+      (SSI_CTRLR0_TMOD_VALUE_EEPROM_READ /* Send INST/ADDR, Receive Data */
+       << SSI_CTRLR0_TMOD_LSB);
+
+  ssi_hw->dmacr = SSI_DMACR_TDMAE_BITS | SSI_DMACR_RDMAE_BITS;
+  ssi_hw->ssienr = 1; // enable SSI again
 }
 
 void __attribute__((__noreturn__))

@@ -43,6 +43,9 @@
   ((const uint8_t *)((BANK * GB_ROM_BANK_SIZE) +                               \
                      ROM_STORAGE_FLASH_START_ADDR + 0x13000000))
 
+#define RomBankToDirectSsi(BANK)                                               \
+  ((((BANK * GB_ROM_BANK_SIZE) + ROM_STORAGE_FLASH_START_ADDR) << 8) | 0xA0)
+
 #define TRANSFER_CHUNK_SIZE 32
 #define CHUNKS_PER_BANK (GB_ROM_BANK_SIZE / TRANSFER_CHUNK_SIZE)
 
@@ -531,8 +534,8 @@ const struct RomInfo *RomStorage_LoadRom(uint8_t rom) {
   lfs_file_close(_lfs, &file);
 
   for (size_t i = 0; i < _romInfoFile.numBanks; i++) {
-    _romInfo.romBanks[i] = RomBankToPointer(_romInfoFile.banks[i]);
     g_loadedRomBanks[i] = RomBankToPointer(_romInfoFile.banks[i]);
+    g_loadedDirectAccessRomBanks[i] = RomBankToDirectSsi(_romInfoFile.banks[i]);
   }
 
   return &_romInfo;

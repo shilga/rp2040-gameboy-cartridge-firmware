@@ -1,5 +1,6 @@
 #include <hardware/dma.h>
 #include <hardware/pio.h>
+#include <hardware/structs/ssi.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -14,12 +15,20 @@
 #define DMA_CHANNEL_RAM_READ_REQUESTOR 4
 #define DMA_CHANNEL_RAM_WRITE_REQUESTOR 5
 
+int _dmaChannelRomHigherDirectSsiPioAddrLoader = -1;
+int _dmaChannelRomHigherDirectSsiBaseAddrLoader = -1;
+int _dmaChannelRomHigherDirectSsiFlashRequester = -1;
+int _dmaChannelRomHigherDirectSsiPioDataLoader = -1;
+
+volatile io_wo_32 *_txFifoWriteData = &(pio0->txf[SMC_GB_WRITE_DATA]);
+volatile io_ro_32 *_rxFifoRamWrite = &(pio1->rxf[SMC_GB_RAM_WRITE]);
+
+volatile uint32_t _devNull;
+
 struct DmaCommand {
   const volatile void *read_addr;
   volatile void *write_addr;
 };
-
-volatile io_wo_32 *_txFifoWriteData = &(pio0->txf[SMC_GB_WRITE_DATA]);
 
 /* clang-format off */
 
@@ -43,7 +52,6 @@ struct DmaCommand RAM_READ[] = {
 };
 volatile void* _ramReadCommands = &RAM_READ[0];
 
-volatile io_ro_32 *_rxFifoRamWrite = &(pio1->rxf[SMC_GB_RAM_WRITE]);
 volatile uint32_t RAM_WRITE_DMA_CTRL = (DMA_CHANNEL_RAM_WRITE_REQUESTOR << DMA_CH2_CTRL_TRIG_CHAIN_TO_LSB) | DMA_CH2_CTRL_TRIG_HIGH_PRIORITY_BITS | DMA_CH2_CTRL_TRIG_EN_BITS | (DREQ_PIO1_RX3 << DMA_CH2_CTRL_TRIG_TREQ_SEL_LSB); 
 struct DmaCommand RAM_WRITE[] = {
   { &RAM_WRITE_DMA_CTRL, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].al1_ctrl) },
@@ -126,4 +134,73 @@ void GbDma_Setup() {
       true // trigger (wait for dreq)
   );
 
+}
+
+void GbDma_SetupHigherDmaDirectSsi()
+{
+  _dmaChannelRomHigherDirectSsiPioAddrLoader = dma_claim_unused_channel(true);
+  _dmaChannelRomHigherDirectSsiBaseAddrLoader = dma_claim_unused_channel(true);
+  _dmaChannelRomHigherDirectSsiFlashRequester = dma_claim_unused_channel(true);
+  _dmaChannelRomHigherDirectSsiPioDataLoader = dma_claim_unused_channel(true);
+
+  dma_channel_config c = dma_channel_get_default_config(_dmaChannelRomHigherDirectSsiPioAddrLoader);
+  channel_config_set_read_increment(&c, false);
+  channel_config_set_transfer_data_size(&c, DMA_SIZE_32);
+  channel_config_set_dreq(&c, pio_get_dreq(pio0, SMC_GB_ROM_HIGH, false));
+  channel_config_set_chain_to(&c, _dmaChannelRomHigherDirectSsiBaseAddrLoader);
+  dma_channel_configure(
+      _dmaChannelRomHigherDirectSsiPioAddrLoader, &c,
+      &(dma_hw->sniff_data),
+      &(pio0->rxf[SMC_GB_ROM_HIGH]),
+      1,   // always transfer one word (pointer)
+      false // do not trigger yet, will be done after all the other DMAs are setup
+  );
+
+  c = dma_channel_get_default_config(_dmaChannelRomHigherDirectSsiBaseAddrLoader);
+  channel_config_set_read_increment(&c, false);
+  channel_config_set_transfer_data_size(&c, DMA_SIZE_32);
+  channel_config_set_sniff_enable(&c, true);
+  channel_config_set_chain_to(&c, _dmaChannelRomHigherDirectSsiFlashRequester);
+  dma_channel_configure(
+      _dmaChannelRomHigherDirectSsiBaseAddrLoader, &c,
+      &_devNull,
+      &rom_high_base_flash_direct,
+      1,   // always transfer one word (pointer)
+      false // will be triggered by PioAddrLoader
+  );
+  dma_sniffer_enable(_dmaChannelRomHigherDirectSsiBaseAddrLoader, DMA_SNIFF_CTRL_CALC_VALUE_SUM, true);
+
+  c = dma_channel_get_default_config(_dmaChannelRomHigherDirectSsiFlashRequester);
+  channel_config_set_read_increment(&c, false);
+  channel_config_set_transfer_data_size(&c, DMA_SIZE_32);
+  channel_config_set_chain_to(&c, _dmaChannelRomHigherDirectSsiPioDataLoader);
+  dma_channel_configure(
+      _dmaChannelRomHigherDirectSsiFlashRequester, &c,
+      &(ssi_hw->dr0),
+      &(dma_hw->sniff_data),
+      1,   // always transfer one word (pointer)
+      false // will be triggered by BaseAddrLoader
+  );
+  
+  c = dma_channel_get_default_config(_dmaChannelRomHigherDirectSsiPioDataLoader);
+  channel_config_set_read_increment(&c, false);
+  channel_config_set_transfer_data_size(&c, DMA_SIZE_8);
+  channel_config_set_dreq(&c, DREQ_XIP_SSIRX);
+  channel_config_set_chain_to(&c, _dmaChannelRomHigherDirectSsiPioAddrLoader);
+  dma_channel_configure(
+      _dmaChannelRomHigherDirectSsiPioDataLoader, &c,
+      &(pio0->txf[SMC_GB_WRITE_DATA]),
+      &(ssi_hw->dr0),
+      1,   // always transfer one byte
+      false // will be triggered by FlashRequester
+  );
+
+  // finally trigger the first stage dma so it waits for dreq from PIO
+  // dma_channel_start(_dmaChannelRomHigherDirectSsiPioAddrLoader);
+}
+
+void __no_inline_not_in_flash_func(GbDma_StartDmaDirect)()
+{
+    dma_hw->multi_channel_trigger = 1
+                                  << _dmaChannelRomHigherDirectSsiPioAddrLoader;
 }
