@@ -115,6 +115,8 @@ void __no_inline_not_in_flash_func(runMbc1Game)(uint8_t game,
   printf("MBC1 game loaded\n");
   printf("initial bank %d a %p\n", rom_bank, g_loadedRomBanks[1]);
 
+  pio_sm_set_enabled(pio0, SMC_GB_ROM_HIGH, true);
+
   __compiler_memory_barrier();
   setSsi8bit();
   GbDma_StartDmaDirect();
@@ -207,9 +209,16 @@ void __no_inline_not_in_flash_func(runMbc3Game)(uint8_t game,
   memcpy(memory, g_shortRomInfos[game].firstBank, GB_ROM_BANK_SIZE);
 
   rom_high_base = g_loadedRomBanks[1];
+  rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[1];
 
   printf("MBC3 game loaded\n");
   printf("initial bank %d a %p\n", rom_bank, g_loadedRomBanks[1]);
+
+  pio_sm_set_enabled(pio0, SMC_GB_ROM_HIGH, true);
+
+  __compiler_memory_barrier();
+  setSsi8bit();
+  GbDma_StartDmaDirect();
 
   gpio_put(PIN_GB_RESET, 0); // let the gameboy start (deassert reset line)
 
@@ -405,7 +414,7 @@ void __no_inline_not_in_flash_func(detect_speed_change)(uint16_t addr,
     if (_speedChangeState == SPEED_CHANGE_KEY1) {
       // speed change is triggered
       _speedChangeState = SPEED_CHANGE_IDLE;
-      // loadDoubleSpeedPio();
+      loadDoubleSpeedPio();
       // ws2812b_setRgb(0, 0, 0x10);
     }
     break;

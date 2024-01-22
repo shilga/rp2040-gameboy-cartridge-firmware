@@ -73,7 +73,7 @@ public entry_point:
     mov  isr null  side 0 ; Clear ISR
     wait 1 gpio PIN_CLK                     ; wait for clk
 
-    set  y 15[6]
+    set  y 14[3]
 loop:
     jmp  y-- loop                       ; delay to let adress pins become available
     jmp  pin a15_high                       ; if A15 is high jump to high area notification

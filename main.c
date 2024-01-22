@@ -53,8 +53,6 @@
 
 #include "gameboy_bus.pio.h"
 
-uint offset_main;
-
 const volatile uint8_t *volatile ram_base = NULL;
 const volatile uint8_t *volatile rom_low_base = NULL;
 const volatile uint8_t *volatile rom_high_base = NULL;
@@ -75,6 +73,10 @@ uint32_t __attribute__((section(".noinit."))) _lastRunningGame;
 
 static lfs_t _lfs = {};
 static uint8_t _lfsFileBuffer[LFS_CACHE_SIZE];
+
+static uint _offset_main;
+static uint16_t _mainStateMachineCopy
+    [sizeof(gameboy_bus_double_speed_program_instructions) / sizeof(uint16_t)];
 
 uint8_t runGbBootloader();
 void loadGame(uint8_t game);
@@ -190,7 +192,7 @@ int main() {
   {
     vreg_set_voltage(VREG_VOLTAGE_1_15);
     sleep_ms(2);
-    set_sys_clock_khz(280000, true);
+    set_sys_clock_khz(266000, true);
     sleep_ms(2);
   }
 
@@ -205,7 +207,7 @@ int main() {
   gpio_set_dir(PIN_GB_RESET, true);
   gpio_put(PIN_GB_RESET, 1);
 
-  pio_gpio_init(pio0, 28);
+  pio_gpio_init(pio1, 28);
   // gpio_init(PIN_UART_TX);
   // gpio_set_dir(PIN_UART_TX, true);
 
@@ -227,7 +229,7 @@ int main() {
   }
 
   // Load the gameboy_bus programs into it's respective PIOs
-  offset_main = pio_add_program(pio1, &gameboy_bus_program);
+  _offset_main = pio_add_program(pio1, &gameboy_bus_program);
   uint offset_detect_a14 =
       pio_add_program(pio1, &gameboy_bus_detect_a14_program);
   uint offset_ram = pio_add_program(pio1, &gameboy_bus_ram_program);
@@ -240,7 +242,7 @@ int main() {
       pio_add_program(pio0, &gameboy_bus_detect_a15_low_a14_irqs_program);
 
   // Initialize all gameboy state machines
-  gameboy_bus_program_init(pio1, SMC_GB_MAIN, offset_main);
+  gameboy_bus_program_init(pio1, SMC_GB_MAIN, _offset_main);
   gameboy_bus_detect_a14_program_init(pio1, SMC_GB_DETECT_A14,
                                       offset_detect_a14);
   gameboy_bus_ram_read_program_init(pio1, SMC_GB_RAM_READ, offset_ram);
@@ -252,6 +254,11 @@ int main() {
   gameboy_bus_rom_high_program_init(pio0, SMC_GB_ROM_HIGH, offset_rom_high);
   gameboy_bus_write_to_data_program_init(pio0, SMC_GB_WRITE_DATA,
                                          offset_write_data);
+
+  // copy the gameboy main double speed statemachine to RAM
+  for (size_t i=0; i < (sizeof(_mainStateMachineCopy) / sizeof(uint16_t)); i++) {
+    _mainStateMachineCopy[i] = gameboy_bus_double_speed_program_instructions[i];
+  }
 
   // initialze base pointers with some default values before initialzizing the
   // DMAs
@@ -539,11 +546,18 @@ void loadGame(uint8_t game) {
   }
 }
 
-void loadDoubleSpeedPio() {
+void __no_inline_not_in_flash_func(loadDoubleSpeedPio)() {
   pio_sm_set_enabled(pio1, SMC_GB_MAIN, false);
-  pio_remove_program(pio1, &gameboy_bus_program, offset_main);
-  offset_main = pio_add_program(pio1, &gameboy_bus_double_speed_program);
-  gameboy_bus_program_init(pio1, SMC_GB_MAIN, offset_main);
+
+  // manually replace statemachine instruction in order to not use flash
+  for (size_t i=0; i < (sizeof(_mainStateMachineCopy) / sizeof(uint16_t)); i++) {
+    uint16_t instr = _mainStateMachineCopy[i];
+    pio1->instr_mem[_offset_main + i] =
+        pio_instr_bits_jmp != _pio_major_instr_bits(instr)
+            ? instr
+            : instr + _offset_main;
+  }
+
   pio_sm_set_enabled(pio1, SMC_GB_MAIN, true);
 }
 
