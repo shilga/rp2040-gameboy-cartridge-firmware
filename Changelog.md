@@ -1,1 +1,0 @@
-* Support for Gameboy Color double speed mode
