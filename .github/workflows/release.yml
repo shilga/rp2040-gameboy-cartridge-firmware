@@ -1,0 +1,75 @@
+# This starter workflow is for a CMake project running on a single platform. There is a different starter workflow if you need cross-platform coverage.
+# See: https://github.com/actions/starter-workflows/blob/main/ci/cmake-multi-platform.yml
+name: Build the releases and upload them
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+*' # Push events to any matching semantic tag. For example, 1.10.1 or 2.0.0 or 3.0.0-alpha.
+        # For more details, see https://docs.github.com/en/actions/reference/workflow-syntax-for-github-actions#filter-pattern-cheat-sheet
+
+env:
+  # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    # The CMake configure and build commands are platform agnostic and should work equally well on Windows or Mac.
+    # You can convert this to a matrix build if you need cross-platform coverage.
+    # See: https://docs.github.com/en/free-pro-team@latest/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
+    runs-on: ubuntu-latest
+    container: 
+      image: shilga/raspberry-pi-pico-gbdk-docker:v0.2
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Configure CMake
+      # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
+      # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
+      run: |
+        echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+        echo 'github.workspace = ${{ github.workspace }}'
+        echo "GITHUB_WORKSPACE = $GITHUB_WORKSPACE"
+        echo 'runner.workspace = ${{ runner.workspace }}'
+        echo "RUNNER_WORKSPACE = $RUNNER_WORKSPACE"
+        cmake --fresh -B $GITHUB_WORKSPACE/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -DBUILD_TIME_PROVIDED_VERSION=${{ github.ref }}
+
+    - name: Build
+      # Build your program with the given configuration
+      run: |
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+        echo "GITHUB_SHA=$GITHUB_SHA" >> $GITHUB_ENV
+        echo 'github.workspace = ${{ github.workspace }}'
+        echo "GITHUB_WORKSPACE = $GITHUB_WORKSPACE"
+        echo 'runner.workspace = ${{ runner.workspace }}'
+        echo "RUNNER_WORKSPACE = $RUNNER_WORKSPACE"
+        cmake --build $GITHUB_WORKSPACE/build --fresh --config ${{env.BUILD_TYPE}} -DBUILD_TIME_PROVIDED_VERSION=${{ github.ref }}
+
+    - name: Package artifacts
+      run: |
+        cd ${{env.GITHUB_WORKSPACE}}/build
+        tar cvzf rp2040-gb-cartridge-${{env.GITHUB_REF}}.tgz rp2040-gb-cartridge.elf rp2040-gb-cartridge.uf2
+
+    - name: Create release
+      id: create_release
+      uses: actions/create-release@latest
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        body: Changelog.md
+        draft: true
+        prerelease: false
+
+    - name: firmware artifact
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ${{env.GITHUB_WORKSPACE}}/build/rp2040-gb-cartridge-${{env.GITHUB_REF}}.tgz
+        asset_content_type: application/zip
+

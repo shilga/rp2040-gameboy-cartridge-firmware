@@ -46,6 +46,7 @@
 
 #include "gb-bootloader/gbbootloader.h"
 
+#include "BuildVersion.h"
 #include "GbDma.h"
 #include "GlobalDefines.h"
 #include "RomStorage.h"
@@ -99,8 +100,10 @@ int main() {
 
   stdio_uart_init_full(uart0, 1000000, 28, -1);
 
-  printf("Hello RP2040 Croco Cartridge %s-%s(%s)\n", git_Branch(),
-         git_Describe(), git_AnyUncommittedChanges() ? "dirty" : "");
+  printf("Hello RP2040 Croco Cartridge %d.%d.%d %s-%s(%s)\n",
+         RP2040_GB_CARTRIDGE_VERSION_MAJOR, RP2040_GB_CARTRIDGE_VERSION_MINOR,
+         RP2040_GB_CARTRIDGE_VERSION_PATCH, git_Branch(), git_Describe(),
+         git_AnyUncommittedChanges() ? "dirty" : "");
 
   printf("SSI->BAUDR: %x\n", *((uint32_t *)(XIP_SSI_BASE + SSI_BAUDR_OFFSET)));
 

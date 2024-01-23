@@ -1,8 +1,20 @@
 cmake_minimum_required(VERSION 3.13)
 
+if (NOT DEFINED BUILD_TIME_PROVIDED_VERSION)
+    set(BUILD_TIME_PROVIDED_VERSION 255.255.255)
+    set(BUILD_VERSION_TYPE U)
+else ()
+    set(BUILD_VERSION_TYPE R)
+endif()
+message("BUILD_TIME_PROVIDED_VERSION=${BUILD_TIME_PROVIDED_VERSION} BUILD_VERSION_TYPE=${BUILD_VERSION_TYPE}")
+
 include($ENV{PICO_SDK_PATH}/external/pico_sdk_import.cmake)
 
 project(rp2040-gb-cartridge C CXX ASM)
+
+project(${PROJECT_NAME} VERSION ${BUILD_TIME_PROVIDED_VERSION})
+
+configure_file(BuildVersion.h.in BuildVersion.h)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
