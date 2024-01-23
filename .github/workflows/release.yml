@@ -45,7 +45,7 @@ jobs:
         echo "GITHUB_WORKSPACE = $GITHUB_WORKSPACE"
         echo 'runner.workspace = ${{ runner.workspace }}'
         echo "RUNNER_WORKSPACE = $RUNNER_WORKSPACE"
-        cmake --build $GITHUB_WORKSPACE/build --fresh --config ${{env.BUILD_TYPE}} -DBUILD_TIME_PROVIDED_VERSION=${{ github.ref_name }}
+        cmake --build $GITHUB_WORKSPACE/build --config ${{env.BUILD_TYPE}} -DBUILD_TIME_PROVIDED_VERSION=${{ github.ref_name }}
 
     - name: Package artifacts
       run: |
