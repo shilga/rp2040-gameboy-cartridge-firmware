@@ -71,11 +71,15 @@ volatile void* _ramWriteCommands = &RAM_WRITE[0];
 
 /* clang-format on */
 
+static void setup_read_dma_method2(PIO pio, unsigned sm, PIO pio_write_data,
+                                   unsigned sm_write_data,
+                                   const volatile void *read_base_addr);
+
 void GbDma_Setup() {
   dma_channel_claim(DMA_CHANNEL_CMD_EXECUTOR);
   dma_channel_claim(DMA_CHANNEL_CMD_LOADER);
   dma_channel_claim(DMA_CHANNEL_MEMORY_ACCESSOR);
-  dma_channel_claim(DMA_CHANNEL_ROM_LOWER_REQUESTOR);
+  // dma_channel_claim(DMA_CHANNEL_ROM_LOWER_REQUESTOR);
   dma_channel_claim(DMA_CHANNEL_RAM_READ_REQUESTOR);
   dma_channel_claim(DMA_CHANNEL_RAM_WRITE_REQUESTOR);
 
@@ -136,17 +140,20 @@ void GbDma_Setup() {
    * which will eventually lead to the serving of the necessary memory transfer
    * from an into the FIFOs of the state machine.
    */
-  dma_channel_get_default_config(DMA_CHANNEL_ROM_LOWER_REQUESTOR);
-  channel_config_set_read_increment(&c, false);
-  channel_config_set_transfer_data_size(&c, DMA_SIZE_32);
-  channel_config_set_dreq(&c, pio_get_dreq(pio0, SMC_GB_ROM_LOW, false));
-  dma_channel_configure(
-      DMA_CHANNEL_ROM_LOWER_REQUESTOR, &c,
-      &(dma_hw->ch[DMA_CHANNEL_CMD_LOADER].al3_read_addr_trig),
-      &_lowerRomReadCommands,
-      1,   // always transfer one word (pointer)
-      true // trigger (wait for dreq)
-  );
+  // dma_channel_get_default_config(DMA_CHANNEL_ROM_LOWER_REQUESTOR);
+  // channel_config_set_read_increment(&c, false);
+  // channel_config_set_transfer_data_size(&c, DMA_SIZE_32);
+  // channel_config_set_dreq(&c, pio_get_dreq(pio0, SMC_GB_ROM_LOW, false));
+  // dma_channel_configure(
+  //     DMA_CHANNEL_ROM_LOWER_REQUESTOR, &c,
+  //     &(dma_hw->ch[DMA_CHANNEL_CMD_LOADER].al3_read_addr_trig),
+  //     &_lowerRomReadCommands,
+  //     1,   // always transfer one word (pointer)
+  //     true // trigger (wait for dreq)
+  // );
+
+  setup_read_dma_method2(pio0, SMC_GB_ROM_LOW, pio0, SMC_GB_WRITE_DATA,
+                         &rom_low_base);
 
   dma_channel_get_default_config(DMA_CHANNEL_RAM_READ_REQUESTOR);
   channel_config_set_read_increment(&c, false);
@@ -236,4 +243,55 @@ void GbDma_SetupHigherDmaDirectSsi() {
 void __no_inline_not_in_flash_func(GbDma_StartDmaDirect)() {
   dma_hw->multi_channel_trigger = 1
                                   << _dmaChannelRomHigherDirectSsiPioAddrLoader;
+}
+
+static void setup_read_dma_method2(PIO pio, unsigned sm, PIO pio_write_data,
+                                   unsigned sm_write_data,
+                                   const volatile void *read_base_addr) {
+  unsigned dma1, dma2, dma3;
+  dma_channel_config cfg;
+
+  dma1 = dma_claim_unused_channel(true);
+  dma2 = dma_claim_unused_channel(true);
+  dma3 = dma_claim_unused_channel(true);
+
+  // Set up DMA2 first (it's not triggered until DMA1 does so)
+  cfg = dma_channel_get_default_config(dma2);
+  channel_config_set_read_increment(&cfg, false);
+  // write increment defaults to false
+  // dreq defaults to DREQ_FORCE
+  channel_config_set_transfer_data_size(&cfg, DMA_SIZE_8);
+  channel_config_set_high_priority(&cfg, true);
+  dma_channel_set_trans_count(dma2, 1, false);
+  dma_channel_set_write_addr(dma2, &(pio_write_data->txf[sm_write_data]),
+                             false);
+  channel_config_set_chain_to(&cfg, dma1);
+  dma_channel_set_config(dma2, &cfg, false);
+
+  // Set up DMA1 and trigger it
+  cfg = dma_channel_get_default_config(dma1);
+  channel_config_set_read_increment(&cfg, false);
+  // write increment defaults to false
+  channel_config_set_dreq(&cfg, pio_get_dreq(pio, sm, false));
+  // transfer size defaults to 32
+  channel_config_set_high_priority(&cfg, true);
+  dma_channel_set_trans_count(dma1, 1, false);
+  dma_channel_set_read_addr(dma1, &(pio->rxf[sm]), false);
+  dma_channel_set_write_addr(dma1, &(dma_hw->ch[dma2].read_addr), false);
+  channel_config_set_chain_to(&cfg, dma3);
+  dma_channel_set_config(dma1, &cfg, true);
+
+  cfg = dma_channel_get_default_config(dma3);
+  channel_config_set_read_increment(&cfg, false);
+  // write increment defaults to false
+  // dreq defaults to DREQ_FORCE
+  // transfer size defaults to 32
+  channel_config_set_high_priority(&cfg, true);
+  dma_channel_set_trans_count(dma3, 1, false);
+  dma_channel_set_read_addr(dma3, read_base_addr, false);
+  dma_channel_set_write_addr(
+      dma3, hw_set_alias_untyped(&(dma_hw->ch[dma2].al3_read_addr_trig)),
+      false);
+  // channel_config_set_chain_to(&cfg, dma2);
+  dma_channel_set_config(dma3, &cfg, false);
 }
