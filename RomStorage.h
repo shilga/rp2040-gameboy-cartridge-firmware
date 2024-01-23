@@ -26,7 +26,6 @@ struct RomInfo {
   uint16_t numRomBanks;
   uint16_t numRamBanks;
   uint8_t mbc;
-  const uint8_t *romBanks[MAX_BANKS_PER_ROM];
 };
 
 int RomStorage_init(lfs_t *lfs);

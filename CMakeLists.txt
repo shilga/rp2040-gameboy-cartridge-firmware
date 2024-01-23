@@ -19,11 +19,19 @@ target_compile_definitions(littlefs-lib PUBLIC LFS_NO_MALLOC LFS_YES_TRACE)
 
 add_subdirectory(libs/git-commit-tracking)
 
-add_executable(${PROJECT_NAME} main.c mbc.c webusb.c usb_descriptors.c RomStorage.c GameBoyHeader.c)
+add_executable(${PROJECT_NAME} 
+    main.c
+    GbDma.c
+    mbc.c
+    webusb.c
+    usb_descriptors.c
+    RomStorage.c
+    GameBoyHeader.c
+    ws2812b_spi.c
+    )
 
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/generated)
 
-pico_generate_pio_header(${PROJECT_NAME} ${CMAKE_CURRENT_LIST_DIR}/ws2812.pio OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/generated)
 pico_generate_pio_header(${PROJECT_NAME} ${CMAKE_CURRENT_LIST_DIR}/gameboy_bus.pio OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/generated)
 
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_LIST_DIR})
@@ -35,6 +43,20 @@ pico_set_linker_script(${PROJECT_NAME} ${CMAKE_CURRENT_LIST_DIR}/linkerscript.ld
 
 add_dependencies(${PROJECT_NAME} BootloaderGb_hdr)
 
-target_link_libraries(${PROJECT_NAME} pico_stdlib pico_bootsel_via_double_reset hardware_dma hardware_uart hardware_gpio hardware_pio hardware_clocks littlefs-lib tinyusb_device tinyusb_board cmake_git_commit_tracking)
+target_link_libraries(${PROJECT_NAME} 
+    pico_stdlib
+    pico_bootsel_via_double_reset
+    hardware_dma
+    hardware_uart
+    hardware_i2c
+    hardware_spi
+    hardware_gpio
+    hardware_pio
+    hardware_clocks
+    littlefs-lib
+    tinyusb_device
+    tinyusb_board
+    cmake_git_commit_tracking
+    )
 
 pico_add_extra_outputs(${PROJECT_NAME})

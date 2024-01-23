@@ -15,8 +15,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include "GbDma.h"
 #include "GlobalDefines.h"
-#include "hardware/regs/clocks.h"
+#include "ws2812b_spi.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -24,14 +25,25 @@
 #include <string.h>
 
 #include <hardware/clocks.h>
+#include <hardware/dma.h>
 #include <hardware/pio.h>
+#include <hardware/regs/clocks.h>
 #include <hardware/structs/scb.h>
 #include <hardware/sync.h>
 #include <pico/platform.h>
 
+void detect_speed_change(uint16_t addr, uint16_t rom_bank);
+
 void __no_inline_not_in_flash_func(runNoMbcGame)(uint8_t game) {
   memcpy(memory, g_loadedRomBanks[0], GB_ROM_BANK_SIZE);
   memcpy(&memory[GB_ROM_BANK_SIZE], g_loadedRomBanks[1], GB_ROM_BANK_SIZE);
+
+  // rom_high_base_flash_direct =
+  //     ((((uint32_t)g_loadedRomBanks[1]) - 0x13000000UL) << 8U) | 0xA0;
+
+  rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[1];
+
+  pio_sm_set_enabled(pio0, SMC_GB_ROM_HIGH, true);
 
   // rom_high_base = &(_games[game][GB_ROM_BANK_SIZE]);
 
@@ -42,32 +54,40 @@ void __no_inline_not_in_flash_func(runNoMbcGame)(uint8_t game) {
                           false);
 
   // Turn off all clocks when in sleep mode except for RTC
-  clocks_hw->sleep_en0 =
-      CLOCKS_SLEEP_EN0_CLK_SYS_SRAM0_BITS |
-      CLOCKS_SLEEP_EN0_CLK_SYS_SRAM1_BITS |
-      CLOCKS_SLEEP_EN0_CLK_SYS_SRAM2_BITS |
-      CLOCKS_SLEEP_EN0_CLK_SYS_SRAM3_BITS | CLOCKS_SLEEP_EN0_CLK_SYS_PIO1_BITS |
-      CLOCKS_SLEEP_EN0_CLK_SYS_PIO0_BITS |
-      CLOCKS_SLEEP_EN0_CLK_SYS_PLL_SYS_BITS |
-      CLOCKS_SLEEP_EN0_CLK_SYS_BUSFABRIC_BITS |
-      CLOCKS_SLEEP_EN0_CLK_SYS_BUSCTRL_BITS |
-      CLOCKS_SLEEP_EN0_CLK_SYS_DMA_BITS | CLOCKS_SLEEP_EN0_CLK_SYS_CLOCKS_BITS;
-  // clocks_hw->sleep_en1 =
-  //     CLOCKS_SLEEP_EN1_CLK_SYS_XOSC_MSB | CLOCKS_SLEEP_EN1_CLK_SYS_XIP_BITS;
-  clocks_hw->sleep_en1 = CLOCKS_SLEEP_EN1_CLK_SYS_XOSC_MSB;
+  // clocks_hw->sleep_en0 =
+  //     CLOCKS_SLEEP_EN0_CLK_SYS_SRAM0_BITS |
+  //     CLOCKS_SLEEP_EN0_CLK_SYS_SRAM1_BITS |
+  //     CLOCKS_SLEEP_EN0_CLK_SYS_SRAM2_BITS |
+  //     CLOCKS_SLEEP_EN0_CLK_SYS_SRAM3_BITS |
+  //     CLOCKS_SLEEP_EN0_CLK_SYS_PIO1_BITS | CLOCKS_SLEEP_EN0_CLK_SYS_PIO0_BITS
+  //     | CLOCKS_SLEEP_EN0_CLK_SYS_PLL_SYS_BITS |
+  //     CLOCKS_SLEEP_EN0_CLK_SYS_BUSFABRIC_BITS |
+  //     CLOCKS_SLEEP_EN0_CLK_SYS_BUSCTRL_BITS |
+  //     CLOCKS_SLEEP_EN0_CLK_SYS_DMA_BITS |
+  //     CLOCKS_SLEEP_EN0_CLK_SYS_CLOCKS_BITS;
+  // // clocks_hw->sleep_en1 =
+  // //     CLOCKS_SLEEP_EN1_CLK_SYS_XOSC_MSB |
+  // CLOCKS_SLEEP_EN1_CLK_SYS_XIP_BITS; clocks_hw->sleep_en1 =
+  // CLOCKS_SLEEP_EN1_CLK_SYS_XOSC_MSB;
 
   printf("No MBC game loaded\n");
 
+  pio_sm_set_enabled(pio0, SMC_GB_ROM_HIGH, true);
+
+  __compiler_memory_barrier();
+  setSsi8bit();
+  GbDma_StartDmaDirect();
+
   gpio_put(PIN_GB_RESET, 0); // let the gameboy start (deassert reset line)
 
-  uint save = scb_hw->scr;
-  // Enable deep sleep at the proc
-  scb_hw->scr = save | M0PLUS_SCR_SLEEPDEEP_BITS;
+  // uint save = scb_hw->scr;
+  // // Enable deep sleep at the proc
+  // scb_hw->scr = save | M0PLUS_SCR_SLEEPDEEP_BITS;
 
-  // Go to sleep (forever)
-  __wfi();
+  // // Go to sleep (forever)
+  // __wfi();
 
-  printf("awake\n");
+  // printf("awake\n");
 
   while (1)
     ;
@@ -92,9 +112,16 @@ void __no_inline_not_in_flash_func(runMbc1Game)(uint8_t game,
   memcpy(memory, g_shortRomInfos[game].firstBank, GB_ROM_BANK_SIZE);
 
   rom_high_base = g_loadedRomBanks[1];
+  rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[1];
 
   printf("MBC1 game loaded\n");
   printf("initial bank %d a %p\n", rom_bank, g_loadedRomBanks[1]);
+
+  pio_sm_set_enabled(pio0, SMC_GB_ROM_HIGH, true);
+
+  __compiler_memory_barrier();
+  setSsi8bit();
+  GbDma_StartDmaDirect();
 
   gpio_put(PIN_GB_RESET, 0); // let the gameboy start (deassert reset line)
 
@@ -131,7 +158,7 @@ void __no_inline_not_in_flash_func(runMbc1Game)(uint8_t game,
           break;
         case 0xA000: // write to RAM
           if (!ram_dirty) {
-            pio0->txf[SMC_WS2812] = 0x00150000; // switch on LED to red
+            ws2812b_setRgb(0x10, 0, 0); // switch on LED to red
             ram_dirty = true;
           }
           break;
@@ -150,6 +177,7 @@ void __no_inline_not_in_flash_func(runMbc1Game)(uint8_t game,
         if (rom_bank != rom_bank_new) {
           rom_bank = rom_bank_new;
           rom_high_base = g_loadedRomBanks[rom_bank];
+          rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[rom_bank];
         }
 
         if (ram_enabled != new_ram_enabled) {
@@ -183,9 +211,16 @@ void __no_inline_not_in_flash_func(runMbc3Game)(uint8_t game,
   memcpy(memory, g_shortRomInfos[game].firstBank, GB_ROM_BANK_SIZE);
 
   rom_high_base = g_loadedRomBanks[1];
+  rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[1];
 
   printf("MBC3 game loaded\n");
   printf("initial bank %d a %p\n", rom_bank, g_loadedRomBanks[1]);
+
+  pio_sm_set_enabled(pio0, SMC_GB_ROM_HIGH, true);
+
+  __compiler_memory_barrier();
+  setSsi8bit();
+  GbDma_StartDmaDirect();
 
   gpio_put(PIN_GB_RESET, 0); // let the gameboy start (deassert reset line)
 
@@ -218,7 +253,7 @@ void __no_inline_not_in_flash_func(runMbc3Game)(uint8_t game,
           break;
         case 0xA000: // write to RAM
           if (!ram_dirty) {
-            pio0->txf[SMC_WS2812] = 0x00150000; // switch on LED to red
+            ws2812b_setRgb(0x10, 0, 0); // switch on LED to red
             ram_dirty = true;
           }
           break;
@@ -232,6 +267,7 @@ void __no_inline_not_in_flash_func(runMbc3Game)(uint8_t game,
         if (rom_bank != rom_bank_new) {
           rom_bank = rom_bank_new;
           rom_high_base = g_loadedRomBanks[rom_bank];
+          rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[rom_bank];
         }
 
         if (ram_enabled != new_ram_enabled) {
@@ -266,9 +302,16 @@ void __no_inline_not_in_flash_func(runMbc5Game)(uint8_t game,
   memcpy(memory, g_shortRomInfos[game].firstBank, GB_ROM_BANK_SIZE);
 
   rom_high_base = g_loadedRomBanks[1];
+  rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[1];
 
   printf("MBC5 game loaded\n");
   printf("initial bank %d a %p\n", rom_bank, g_loadedRomBanks[1]);
+
+  pio_sm_set_enabled(pio0, SMC_GB_ROM_HIGH, true);
+
+  __compiler_memory_barrier();
+  setSsi8bit();
+  GbDma_StartDmaDirect();
 
   gpio_put(PIN_GB_RESET, 0); // let the gameboy start (deassert reset line)
 
@@ -303,7 +346,7 @@ void __no_inline_not_in_flash_func(runMbc5Game)(uint8_t game,
           break;
         case 0xA000: // write to RAM
           if (!ram_dirty) {
-            pio0->txf[SMC_WS2812] = 0x00150000; // switch on LED to red
+            ws2812b_setRgb(0x10, 0, 0); // switch on LED to red
             ram_dirty = true;
           }
           break;
@@ -318,6 +361,7 @@ void __no_inline_not_in_flash_func(runMbc5Game)(uint8_t game,
         if (rom_bank != rom_bank_new) {
           rom_bank = rom_bank_new;
           rom_high_base = g_loadedRomBanks[rom_bank];
+          rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[rom_bank];
         }
 
         if (ram_enabled != new_ram_enabled) {
@@ -330,7 +374,56 @@ void __no_inline_not_in_flash_func(runMbc5Game)(uint8_t game,
           ram_bank = ram_bank_local;
           ram_base = &ram_memory[ram_bank * GB_RAM_BANK_SIZE];
         }
+      } else { // read
+        detect_speed_change(addr, rom_bank);
       }
     }
+  }
+}
+
+enum eDETECT_SPEED_CHANGE_STATE {
+  SPEED_CHANGE_IDLE,
+  SPEED_CHANGE_LDH,
+  SPEED_CHANGE_KEY1,
+} _speedChangeState = SPEED_CHANGE_IDLE;
+
+void __no_inline_not_in_flash_func(detect_speed_change)(uint16_t addr,
+                                                        uint16_t rom_bank) {
+  uint8_t data = 0;
+  switch (addr & 0xC000) {
+  case 0x0000:
+    data = memory[addr & 0x3FFFU];
+    break;
+  // case 0x4000:
+  //   data = g_loadedRomBanks[rom_bank][addr & 0x3FFFU];
+  //   break;
+  default:
+    break;
+  }
+
+  switch (data) {
+  case 0xe0: // LDH
+    if (_speedChangeState == SPEED_CHANGE_IDLE) {
+      _speedChangeState = SPEED_CHANGE_LDH;
+    }
+    break;
+  case 0x4d: // LDH KEY1,A
+    if (_speedChangeState == SPEED_CHANGE_LDH) {
+      _speedChangeState = SPEED_CHANGE_KEY1;
+    }
+    break;
+  case 0x10: // STOP
+    if (_speedChangeState == SPEED_CHANGE_KEY1) {
+      // speed change is triggered
+      _speedChangeState = SPEED_CHANGE_IDLE;
+      loadDoubleSpeedPio();
+      // ws2812b_setRgb(0, 0, 0x10);
+    }
+    break;
+  default:
+    if (_speedChangeState == SPEED_CHANGE_LDH) {
+      _speedChangeState = SPEED_CHANGE_IDLE;
+    }
+    break;
   }
 }

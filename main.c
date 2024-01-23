@@ -20,6 +20,7 @@
 #include <hardware/gpio.h>
 #include <hardware/pio.h>
 #include <hardware/regs/ssi.h>
+#include <hardware/structs/ssi.h>
 #include <hardware/sync.h>
 #include <hardware/timer.h>
 #include <hardware/vreg.h>
@@ -45,16 +46,18 @@
 
 #include "gb-bootloader/gbbootloader.h"
 
+#include "GbDma.h"
 #include "GlobalDefines.h"
 #include "RomStorage.h"
 #include "webusb.h"
+#include "ws2812b_spi.h"
 
 #include "gameboy_bus.pio.h"
-#include "ws2812.pio.h"
 
 const volatile uint8_t *volatile ram_base = NULL;
 const volatile uint8_t *volatile rom_low_base = NULL;
 const volatile uint8_t *volatile rom_high_base = NULL;
+volatile uint32_t rom_high_base_flash_direct = 0;
 
 uint8_t memory[GB_ROM_BANK_SIZE * 2] __attribute__((aligned(GB_ROM_BANK_SIZE)));
 uint8_t __attribute__((section(".noinit.")))
@@ -64,6 +67,7 @@ ram_memory[(GB_MAX_RAM_BANKS + 1) * GB_RAM_BANK_SIZE]
 struct ShortRomInfo g_shortRomInfos[MAX_ALLOWED_ROMS];
 uint8_t g_numRoms = 0;
 const uint8_t *g_loadedRomBanks[MAX_BANKS_PER_ROM];
+uint32_t g_loadedDirectAccessRomBanks[MAX_BANKS_PER_ROM];
 
 uint32_t __attribute__((section(".noinit."))) _noInitTest;
 uint32_t __attribute__((section(".noinit."))) _lastRunningGame;
@@ -71,112 +75,16 @@ uint32_t __attribute__((section(".noinit."))) _lastRunningGame;
 static lfs_t _lfs = {};
 static uint8_t _lfsFileBuffer[LFS_CACHE_SIZE];
 
+static uint _offset_main;
+static uint16_t _mainStateMachineCopy
+    [sizeof(gameboy_bus_double_speed_program_instructions) / sizeof(uint16_t)];
+
 uint8_t runGbBootloader();
 void loadGame(uint8_t game);
 void runNoMbcGame(uint8_t game);
 void runMbc1Game(uint8_t game, uint16_t num_rom_banks, uint8_t num_ram_banks);
 void runMbc3Game(uint8_t game, uint16_t num_rom_banks, uint8_t num_ram_banks);
 void runMbc5Game(uint8_t game, uint16_t num_rom_banks, uint8_t num_ram_banks);
-
-static void setup_read_dma_method2(PIO pio, unsigned sm, PIO pio_write_data,
-                                   unsigned sm_write_data,
-                                   const volatile void *read_base_addr) {
-  unsigned dma1, dma2, dma3;
-  dma_channel_config cfg;
-
-  dma1 = dma_claim_unused_channel(true);
-  dma2 = dma_claim_unused_channel(true);
-  dma3 = dma_claim_unused_channel(true);
-
-  // Set up DMA2 first (it's not triggered until DMA1 does so)
-  cfg = dma_channel_get_default_config(dma2);
-  channel_config_set_read_increment(&cfg, false);
-  // write increment defaults to false
-  // dreq defaults to DREQ_FORCE
-  channel_config_set_transfer_data_size(&cfg, DMA_SIZE_8);
-  channel_config_set_high_priority(&cfg, true);
-  dma_channel_set_trans_count(dma2, 1, false);
-  dma_channel_set_write_addr(dma2, &(pio_write_data->txf[sm_write_data]),
-                             false);
-  channel_config_set_chain_to(&cfg, dma1);
-  dma_channel_set_config(dma2, &cfg, false);
-
-  // Set up DMA1 and trigger it
-  cfg = dma_channel_get_default_config(dma1);
-  channel_config_set_read_increment(&cfg, false);
-  // write increment defaults to false
-  channel_config_set_dreq(&cfg, pio_get_dreq(pio, sm, false));
-  // transfer size defaults to 32
-  channel_config_set_high_priority(&cfg, true);
-  dma_channel_set_trans_count(dma1, 1, false);
-  dma_channel_set_read_addr(dma1, &(pio->rxf[sm]), false);
-  dma_channel_set_write_addr(dma1, &(dma_hw->ch[dma2].read_addr), false);
-  channel_config_set_chain_to(&cfg, dma3);
-  dma_channel_set_config(dma1, &cfg, true);
-
-  cfg = dma_channel_get_default_config(dma3);
-  channel_config_set_read_increment(&cfg, false);
-  // write increment defaults to false
-  // dreq defaults to DREQ_FORCE
-  // transfer size defaults to 32
-  channel_config_set_high_priority(&cfg, true);
-  dma_channel_set_trans_count(dma3, 1, false);
-  dma_channel_set_read_addr(dma3, read_base_addr, false);
-  dma_channel_set_write_addr(
-      dma3, hw_set_alias_untyped(&(dma_hw->ch[dma2].al3_read_addr_trig)),
-      false);
-  // channel_config_set_chain_to(&cfg, dma2);
-  dma_channel_set_config(dma3, &cfg, false);
-}
-
-static void setup_write_dma_method2(PIO pio, unsigned sm,
-                                    const volatile void *write_base_addr) {
-  unsigned dma1, dma2, dma3;
-  dma_channel_config cfg;
-
-  dma1 = dma_claim_unused_channel(true);
-  dma2 = dma_claim_unused_channel(true);
-  dma3 = dma_claim_unused_channel(true);
-
-  // Set up DMA2 first (it's not triggered until DMA1 does so)
-  cfg = dma_channel_get_default_config(dma2);
-  channel_config_set_read_increment(&cfg, false);
-  // write increment defaults to false
-  channel_config_set_dreq(&cfg, pio_get_dreq(pio, sm, false));
-  channel_config_set_transfer_data_size(&cfg, DMA_SIZE_8);
-  channel_config_set_chain_to(&cfg, dma1);
-  channel_config_set_high_priority(&cfg, true);
-  dma_channel_set_read_addr(dma2, &(pio->rxf[sm]), false);
-  dma_channel_set_trans_count(dma2, 1, false);
-  dma_channel_set_config(dma2, &cfg, false);
-
-  // Set up DMA1 and trigger it
-  cfg = dma_channel_get_default_config(dma1);
-  channel_config_set_read_increment(&cfg, false);
-  // write increment defaults to false
-  channel_config_set_dreq(&cfg, pio_get_dreq(pio, sm, false));
-  // transfer size defaults to 32
-  channel_config_set_chain_to(&cfg, dma3);
-  channel_config_set_high_priority(&cfg, true);
-  dma_channel_set_trans_count(dma1, 1, false);
-  dma_channel_set_read_addr(dma1, &(pio->rxf[sm]), false);
-  dma_channel_set_write_addr(dma1, &(dma_hw->ch[dma2].write_addr), false);
-  dma_channel_set_config(dma1, &cfg, true);
-
-  cfg = dma_channel_get_default_config(dma3);
-  channel_config_set_read_increment(&cfg, false);
-  // write increment defaults to false
-  // dreq defaults to DREQ_FORCE
-  // transfer size defaults to 32
-  channel_config_set_high_priority(&cfg, true);
-  dma_channel_set_trans_count(dma3, 1, false);
-  dma_channel_set_read_addr(dma3, write_base_addr, false);
-  dma_channel_set_write_addr(
-      dma3, hw_set_alias_untyped(&(dma_hw->ch[dma2].al2_write_addr_trig)),
-      false);
-  // channel_config_set_chain_to(&cfg, dma2);
-  dma_channel_set_config(dma3, &cfg, false);
-}
 
 int main() {
   // bi_decl(bi_program_description("Sample binary"));
@@ -200,9 +108,9 @@ int main() {
   gpio_set_dir(PIN_GB_RESET, true);
   gpio_put(PIN_GB_RESET, 1);
 
-  // gpio_init(28);
-  // gpio_set_dir(28, true);
-  // pio_gpio_init(pio0, 28);
+  // pio_gpio_init(pio1, 28);
+  // gpio_init(PIN_UART_TX);
+  // gpio_set_dir(PIN_UART_TX, true);
 
   for (uint pin = PIN_AD_BASE - 1; pin < PIN_AD_BASE + 25; pin++) {
     // gpio_init(pin);
@@ -221,24 +129,43 @@ int main() {
     pio_gpio_init(pio0, pin);
   }
 
+  // initialize SPI for WS2812B RGB LED
+  ws2812b_spi_init(spi1);
+  gpio_set_function(WS2812_PIN, GPIO_FUNC_SPI);
+  ws2812b_setRgb(0, 0, 0);
+
   // Load the gameboy_bus programs into it's respective PIOs
-  uint offset_main = pio_add_program(pio1, &gameboy_bus_program);
+  _offset_main = pio_add_program(pio1, &gameboy_bus_program);
   uint offset_detect_a14 =
       pio_add_program(pio1, &gameboy_bus_detect_a14_program);
   uint offset_ram = pio_add_program(pio1, &gameboy_bus_ram_program);
 
-  uint offset_rom = pio_add_program(pio0, &gameboy_bus_rom_program);
+  uint offset_write_data =
+      pio_add_program(pio0, &gameboy_bus_write_to_data_program);
+  uint offset_rom_low = pio_add_program(pio0, &gameboy_bus_rom_low_program);
+  uint offset_rom_high = pio_add_program(pio0, &gameboy_bus_rom_high_program);
+  uint offset_a14_irqs =
+      pio_add_program(pio0, &gameboy_bus_detect_a15_low_a14_irqs_program);
 
   // Initialize all gameboy state machines
-  gameboy_bus_program_init(pio1, SMC_GB_MAIN, offset_main);
+  gameboy_bus_program_init(pio1, SMC_GB_MAIN, _offset_main);
   gameboy_bus_detect_a14_program_init(pio1, SMC_GB_DETECT_A14,
                                       offset_detect_a14);
   gameboy_bus_ram_read_program_init(pio1, SMC_GB_RAM_READ, offset_ram);
   gameboy_bus_ram_write_program_init(pio1, SMC_GB_RAM_WRITE, offset_ram);
 
-  gameboy_bus_rom_low_program_init(pio0, SMC_GB_ROM_LOW, offset_rom);
-  gameboy_bus_rom_high_program_init(pio0, SMC_GB_ROM_HIGH, offset_rom);
-  gameboy_bus_write_to_data_program_init(pio0, SMC_GB_WRITE_DATA, offset_rom);
+  gameboy_bus_detect_a15_low_a14_irqs_init(pio0, SMC_GB_A15LOW_A14IRQS,
+                                           offset_a14_irqs);
+  gameboy_bus_rom_low_program_init(pio0, SMC_GB_ROM_LOW, offset_rom_low);
+  gameboy_bus_rom_high_program_init(pio0, SMC_GB_ROM_HIGH, offset_rom_high);
+  gameboy_bus_write_to_data_program_init(pio0, SMC_GB_WRITE_DATA,
+                                         offset_write_data);
+
+  // copy the gameboy main double speed statemachine to RAM
+  for (size_t i = 0; i < (sizeof(_mainStateMachineCopy) / sizeof(uint16_t));
+       i++) {
+    _mainStateMachineCopy[i] = gameboy_bus_double_speed_program_instructions[i];
+  }
 
   // initialze base pointers with some default values before initialzizing the
   // DMAs
@@ -246,13 +173,8 @@ int main() {
   rom_low_base = memory;
   rom_high_base = &memory[GB_ROM_BANK_SIZE];
 
-  setup_read_dma_method2(pio1, SMC_GB_RAM_READ, pio0, SMC_GB_WRITE_DATA,
-                         &ram_base);
-  setup_write_dma_method2(pio1, SMC_GB_RAM_WRITE, &ram_base);
-  setup_read_dma_method2(pio0, SMC_GB_ROM_HIGH, pio0, SMC_GB_ROM_HIGH,
-                         &rom_high_base);
-  setup_read_dma_method2(pio0, SMC_GB_ROM_LOW, pio0, SMC_GB_ROM_LOW,
-                         &rom_low_base);
+  GbDma_Setup();
+  GbDma_SetupHigherDmaDirectSsi();
 
   // enable all gameboy state machines
   pio_sm_set_enabled(pio1, SMC_GB_MAIN, true);
@@ -261,12 +183,8 @@ int main() {
   pio_sm_set_enabled(pio1, SMC_GB_RAM_WRITE, true);
 
   pio_sm_set_enabled(pio0, SMC_GB_ROM_LOW, true);
-  pio_sm_set_enabled(pio0, SMC_GB_ROM_HIGH, true);
   pio_sm_set_enabled(pio0, SMC_GB_WRITE_DATA, true);
-
-  // load and start the WS8212 StateMachine to control the RGB LED
-  uint offset = pio_add_program(pio0, &ws2812_program);
-  ws2812_program_init(pio0, SMC_WS2812, offset, WS2812_PIN, 800000, false);
+  pio_sm_set_enabled(pio0, SMC_GB_A15LOW_A14IRQS, true);
 
   if (_noInitTest != 0xcafeaffe) {
     _noInitTest = 0xcafeaffe;
@@ -323,11 +241,12 @@ int main() {
 
       _lastRunningGame = 0xFF;
 
-      pio_sm_put_blocking(pio0, SMC_WS2812, 0x150000 << 8);
+      ws2812b_setRgb(0, 0x10, 0); // light up LED in green
     }
   }
 
   uint8_t game = runGbBootloader();
+  // uint8_t game = 5; // 11: Zelda DX, 5: Repugnant, 8: Tetris, 9: Yoshi
 
   (void)save_and_disable_interrupts();
 
@@ -390,16 +309,16 @@ uint8_t __no_inline_not_in_flash_func(runGbBootloader)() {
         if (addr == 0xB001) {
           switch (data) {
           case 1:
-            pio_sm_put_blocking(pio0, SMC_WS2812, 0x001500 << 8);
+            ws2812b_setRgb(0x15, 0, 0);
             break;
           case 2:
-            pio_sm_put_blocking(pio0, SMC_WS2812, 0x150000 << 8);
+            ws2812b_setRgb(0, 0x15, 0);
             break;
           case 3:
-            pio_sm_put_blocking(pio0, SMC_WS2812, 0x000015 << 8);
+            ws2812b_setRgb(0, 0, 0x15);
             break;
           default:
-            pio_sm_put_blocking(pio0, SMC_WS2812, 0);
+            ws2812b_setRgb(0, 0, 0);
             break;
           }
         }
@@ -505,7 +424,7 @@ void loadGame(uint8_t game) {
     return;
   }
 
-  pio_sm_put_blocking(pio0, SMC_WS2812, 0);
+  ws2812b_setRgb(0, 0, 0);
 
   switch (mbc) {
   case 0x00:
@@ -524,6 +443,37 @@ void loadGame(uint8_t game) {
     printf("Unsupported MBC!\n");
     break;
   }
+}
+
+void __no_inline_not_in_flash_func(loadDoubleSpeedPio)() {
+  pio_sm_set_enabled(pio1, SMC_GB_MAIN, false);
+
+  // manually replace statemachine instruction in order to not use flash
+  for (size_t i = 0; i < (sizeof(_mainStateMachineCopy) / sizeof(uint16_t));
+       i++) {
+    uint16_t instr = _mainStateMachineCopy[i];
+    pio1->instr_mem[_offset_main + i] =
+        pio_instr_bits_jmp != _pio_major_instr_bits(instr)
+            ? instr
+            : instr + _offset_main;
+  }
+
+  pio_sm_set_enabled(pio1, SMC_GB_MAIN, true);
+}
+
+void __no_inline_not_in_flash_func(setSsi8bit)() {
+  __compiler_memory_barrier();
+
+  ssi_hw->ssienr = 0; // disable SSI so it can be configured
+  ssi_hw->ctrlr0 =
+      (SSI_CTRLR0_SPI_FRF_VALUE_QUAD /* Quad I/O mode */
+       << SSI_CTRLR0_SPI_FRF_LSB) |
+      (7 << SSI_CTRLR0_DFS_32_LSB) |     /* 8 data bits */
+      (SSI_CTRLR0_TMOD_VALUE_EEPROM_READ /* Send INST/ADDR, Receive Data */
+       << SSI_CTRLR0_TMOD_LSB);
+
+  ssi_hw->dmacr = SSI_DMACR_TDMAE_BITS | SSI_DMACR_RDMAE_BITS;
+  ssi_hw->ssienr = 1; // enable SSI again
 }
 
 void __attribute__((__noreturn__))
