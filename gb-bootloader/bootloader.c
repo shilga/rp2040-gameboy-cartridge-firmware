@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <stdio.h>
 
 #include <gb/cgb.h>
@@ -64,6 +65,10 @@ struct SharedGameboyData {
   uint16_t git_sha1_l;
   uint16_t git_sha1_h;
   uint8_t git_status;
+  char buildType;
+  uint8_t versionMajor;
+  uint8_t versionMinor;
+  uint8_t versionPatch;
   uint8_t number_of_roms;
   uint8_t rom_names;
 };
@@ -155,6 +160,11 @@ void main() {
       gotoxy(0, 15);
       printf("Croco Cartridge");
       gotoxy(0, 16);
+      printf("Ver %hu.", (uint8_t)_sharedData->versionMajor);
+      printf("%hu.", (uint8_t)_sharedData->versionMinor);
+      printf("%hu ", (uint8_t)_sharedData->versionPatch);
+      printf("%c", (char)_sharedData->buildType);
+      gotoxy(0, 17);
       printf("rev %X%X", _sharedData->git_sha1_h, _sharedData->git_sha1_l);
       if (_sharedData->git_status) {
         printf(" dirty");

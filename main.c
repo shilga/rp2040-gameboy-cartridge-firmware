@@ -44,8 +44,10 @@
 
 #include <git_commit.h>
 
+#include "BuildVersion.h"
 #include "gb-bootloader/gbbootloader.h"
 
+#include "BuildVersion.h"
 #include "GbDma.h"
 #include "GlobalDefines.h"
 #include "RomStorage.h"
@@ -99,8 +101,10 @@ int main() {
 
   stdio_uart_init_full(uart0, 1000000, 28, -1);
 
-  printf("Hello RP2040 Croco Cartridge %s-%s(%s)\n", git_Branch(),
-         git_Describe(), git_AnyUncommittedChanges() ? "dirty" : "");
+  printf("Hello RP2040 Croco Cartridge %d.%d.%d %s-%s(%s)\n",
+         RP2040_GB_CARTRIDGE_VERSION_MAJOR, RP2040_GB_CARTRIDGE_VERSION_MINOR,
+         RP2040_GB_CARTRIDGE_VERSION_PATCH, git_Branch(), git_Describe(),
+         git_AnyUncommittedChanges() ? "dirty" : "");
 
   printf("SSI->BAUDR: %x\n", *((uint32_t *)(XIP_SSI_BASE + SSI_BAUDR_OFFSET)));
 
@@ -261,6 +265,10 @@ int main() {
 struct __attribute__((packed)) SharedGameboyData {
   uint32_t git_sha1;
   uint8_t git_status;
+  char buildType;
+  uint8_t versionMajor;
+  uint8_t versionMinor;
+  uint8_t versionPatch;
   uint8_t number_of_roms;
   uint8_t rom_names;
 };
@@ -276,6 +284,10 @@ uint8_t __no_inline_not_in_flash_func(runGbBootloader)() {
 
   shared_data->git_sha1 = strtoul(git_Describe(), NULL, 16);
   shared_data->git_status = git_AnyUncommittedChanges();
+  shared_data->buildType = RP2040_GB_CARTRIDGE_BUILD_VERSION_TYPE;
+  shared_data->versionMajor = RP2040_GB_CARTRIDGE_VERSION_MAJOR;
+  shared_data->versionMinor = RP2040_GB_CARTRIDGE_VERSION_MINOR;
+  shared_data->versionPatch = RP2040_GB_CARTRIDGE_VERSION_PATCH;
 
   // initialize RAM with information about roms
   uint8_t *pRomNames = &shared_data->rom_names;
