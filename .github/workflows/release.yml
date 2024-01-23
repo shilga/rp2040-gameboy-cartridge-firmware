@@ -33,7 +33,7 @@ jobs:
         echo "GITHUB_WORKSPACE = $GITHUB_WORKSPACE"
         echo 'runner.workspace = ${{ runner.workspace }}'
         echo "RUNNER_WORKSPACE = $RUNNER_WORKSPACE"
-        cmake --fresh -B $GITHUB_WORKSPACE/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -DBUILD_TIME_PROVIDED_VERSION=${{ github.ref }}
+        cmake --fresh -B $GITHUB_WORKSPACE/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -DBUILD_TIME_PROVIDED_VERSION=${{ github.ref_name }}
 
     - name: Build
       # Build your program with the given configuration
@@ -45,12 +45,12 @@ jobs:
         echo "GITHUB_WORKSPACE = $GITHUB_WORKSPACE"
         echo 'runner.workspace = ${{ runner.workspace }}'
         echo "RUNNER_WORKSPACE = $RUNNER_WORKSPACE"
-        cmake --build $GITHUB_WORKSPACE/build --fresh --config ${{env.BUILD_TYPE}} -DBUILD_TIME_PROVIDED_VERSION=${{ github.ref }}
+        cmake --build $GITHUB_WORKSPACE/build --fresh --config ${{env.BUILD_TYPE}} -DBUILD_TIME_PROVIDED_VERSION=${{ github.ref_name }}
 
     - name: Package artifacts
       run: |
         cd ${{env.GITHUB_WORKSPACE}}/build
-        tar cvzf rp2040-gb-cartridge-${{env.GITHUB_REF}}.tgz rp2040-gb-cartridge.elf rp2040-gb-cartridge.uf2
+        tar cvzf rp2040-gb-cartridge-${{env.GITHUB_REF_NAME}}.tgz rp2040-gb-cartridge.elf rp2040-gb-cartridge.uf2
 
     - name: Create release
       id: create_release
@@ -58,8 +58,8 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
       with:
-        tag_name: ${{ github.ref }}
-        release_name: Release ${{ github.ref }}
+        tag_name: ${{ github.ref_name }}
+        release_name: Release ${{ github.ref_name }}
         body: Changelog.md
         draft: true
         prerelease: false
