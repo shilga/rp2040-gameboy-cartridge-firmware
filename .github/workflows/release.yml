@@ -1,6 +1,6 @@
 # This starter workflow is for a CMake project running on a single platform. There is a different starter workflow if you need cross-platform coverage.
 # See: https://github.com/actions/starter-workflows/blob/main/ci/cmake-multi-platform.yml
-name: Build the releases and upload them
+name: Build release
 
 on:
   push:
@@ -13,10 +13,26 @@ env:
   BUILD_TYPE: Release
 
 jobs:
+  create_release:
+    name: Create release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/')
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          prerelease: false
+          draft: true
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+
   build:
-    # The CMake configure and build commands are platform agnostic and should work equally well on Windows or Mac.
-    # You can convert this to a matrix build if you need cross-platform coverage.
-    # See: https://docs.github.com/en/free-pro-team@latest/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
+    needs: create_release
     runs-on: ubuntu-latest
     container: 
       image: shilga/raspberry-pi-pico-gbdk-docker:v0.2
@@ -52,24 +68,12 @@ jobs:
         cd ${{env.GITHUB_WORKSPACE}}/build
         tar cvzf rp2040-gb-cartridge-${{env.GITHUB_REF_NAME}}.tgz rp2040-gb-cartridge.elf rp2040-gb-cartridge.uf2
 
-    - name: Create release
-      id: create_release
-      uses: actions/create-release@latest
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
+    - name: Upload release artifact
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: AButler/upload-release-assets@v2.0
       with:
-        tag_name: ${{ github.ref_name }}
-        release_name: Release ${{ github.ref_name }}
-        body: Changelog.md
-        draft: true
-        prerelease: false
-
-    - name: firmware artifact
-      uses: actions/upload-release-asset@v1
+        files: "${{env.GITHUB_WORKSPACE}}/build/*.tgz"
+        repo-token: ${{ secrets.GITHUB_TOKEN }}
+        release-tag: ${{ github.ref_name }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ${{env.GITHUB_WORKSPACE}}/build/rp2040-gb-cartridge-${{env.GITHUB_REF}}.tgz
-        asset_content_type: application/zip
-
