@@ -64,4 +64,7 @@ extern uint8_t g_numRoms;
 extern const uint8_t *g_loadedRomBanks[MAX_BANKS_PER_ROM];
 extern uint32_t g_loadedDirectAccessRomBanks[MAX_BANKS_PER_ROM];
 
+void setSsi8bit();
+void loadDoubleSpeedPio();
+
 #endif /* A6E4EABE_18C1_4BCB_A021_7C59DEE53104 */

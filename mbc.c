@@ -15,8 +15,8 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include "GbDma.h"
 #include "GlobalDefines.h"
-#include "hardware/regs/clocks.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -26,6 +26,7 @@
 #include <hardware/clocks.h>
 #include <hardware/dma.h>
 #include <hardware/pio.h>
+#include <hardware/regs/clocks.h>
 #include <hardware/structs/scb.h>
 #include <hardware/sync.h>
 #include <pico/platform.h>

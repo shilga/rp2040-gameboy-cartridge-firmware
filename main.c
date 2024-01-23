@@ -85,106 +85,6 @@ void runMbc1Game(uint8_t game, uint16_t num_rom_banks, uint8_t num_ram_banks);
 void runMbc3Game(uint8_t game, uint16_t num_rom_banks, uint8_t num_ram_banks);
 void runMbc5Game(uint8_t game, uint16_t num_rom_banks, uint8_t num_ram_banks);
 
-static void setup_read_dma_method2(PIO pio, unsigned sm, PIO pio_write_data,
-                                   unsigned sm_write_data,
-                                   const volatile void *read_base_addr) {
-  unsigned dma1, dma2, dma3;
-  dma_channel_config cfg;
-
-  dma1 = dma_claim_unused_channel(true);
-  dma2 = dma_claim_unused_channel(true);
-  dma3 = dma_claim_unused_channel(true);
-
-  // Set up DMA2 first (it's not triggered until DMA1 does so)
-  cfg = dma_channel_get_default_config(dma2);
-  channel_config_set_read_increment(&cfg, false);
-  // write increment defaults to false
-  // dreq defaults to DREQ_FORCE
-  channel_config_set_transfer_data_size(&cfg, DMA_SIZE_8);
-  channel_config_set_high_priority(&cfg, true);
-  dma_channel_set_trans_count(dma2, 1, false);
-  dma_channel_set_write_addr(dma2, &(pio_write_data->txf[sm_write_data]),
-                             false);
-  channel_config_set_chain_to(&cfg, dma1);
-  dma_channel_set_config(dma2, &cfg, false);
-
-  // Set up DMA1 and trigger it
-  cfg = dma_channel_get_default_config(dma1);
-  channel_config_set_read_increment(&cfg, false);
-  // write increment defaults to false
-  channel_config_set_dreq(&cfg, pio_get_dreq(pio, sm, false));
-  // transfer size defaults to 32
-  channel_config_set_high_priority(&cfg, true);
-  dma_channel_set_trans_count(dma1, 1, false);
-  dma_channel_set_read_addr(dma1, &(pio->rxf[sm]), false);
-  dma_channel_set_write_addr(dma1, &(dma_hw->ch[dma2].read_addr), false);
-  channel_config_set_chain_to(&cfg, dma3);
-  dma_channel_set_config(dma1, &cfg, true);
-
-  cfg = dma_channel_get_default_config(dma3);
-  channel_config_set_read_increment(&cfg, false);
-  // write increment defaults to false
-  // dreq defaults to DREQ_FORCE
-  // transfer size defaults to 32
-  channel_config_set_high_priority(&cfg, true);
-  dma_channel_set_trans_count(dma3, 1, false);
-  dma_channel_set_read_addr(dma3, read_base_addr, false);
-  dma_channel_set_write_addr(
-      dma3, hw_set_alias_untyped(&(dma_hw->ch[dma2].al3_read_addr_trig)),
-      false);
-  // channel_config_set_chain_to(&cfg, dma2);
-  dma_channel_set_config(dma3, &cfg, false);
-}
-
-static void setup_write_dma_method2(PIO pio, unsigned sm,
-                                    const volatile void *write_base_addr) {
-  unsigned dma1, dma2, dma3;
-  dma_channel_config cfg;
-
-  dma1 = dma_claim_unused_channel(true);
-  dma2 = dma_claim_unused_channel(true);
-  dma3 = dma_claim_unused_channel(true);
-
-  // Set up DMA2 first (it's not triggered until DMA1 does so)
-  cfg = dma_channel_get_default_config(dma2);
-  channel_config_set_read_increment(&cfg, false);
-  // write increment defaults to false
-  channel_config_set_dreq(&cfg, pio_get_dreq(pio, sm, false));
-  channel_config_set_transfer_data_size(&cfg, DMA_SIZE_8);
-  channel_config_set_chain_to(&cfg, dma1);
-  channel_config_set_high_priority(&cfg, true);
-  dma_channel_set_read_addr(dma2, &(pio->rxf[sm]), false);
-  dma_channel_set_trans_count(dma2, 1, false);
-  dma_channel_set_config(dma2, &cfg, false);
-
-  // Set up DMA1 and trigger it
-  cfg = dma_channel_get_default_config(dma1);
-  channel_config_set_read_increment(&cfg, false);
-  // write increment defaults to false
-  channel_config_set_dreq(&cfg, pio_get_dreq(pio, sm, false));
-  // transfer size defaults to 32
-  channel_config_set_chain_to(&cfg, dma3);
-  channel_config_set_high_priority(&cfg, true);
-  dma_channel_set_trans_count(dma1, 1, false);
-  dma_channel_set_read_addr(dma1, &(pio->rxf[sm]), false);
-  dma_channel_set_write_addr(dma1, &(dma_hw->ch[dma2].write_addr), false);
-  dma_channel_set_config(dma1, &cfg, true);
-
-  cfg = dma_channel_get_default_config(dma3);
-  channel_config_set_read_increment(&cfg, false);
-  // write increment defaults to false
-  // dreq defaults to DREQ_FORCE
-  // transfer size defaults to 32
-  channel_config_set_high_priority(&cfg, true);
-  dma_channel_set_trans_count(dma3, 1, false);
-  dma_channel_set_read_addr(dma3, write_base_addr, false);
-  dma_channel_set_write_addr(
-      dma3, hw_set_alias_untyped(&(dma_hw->ch[dma2].al2_write_addr_trig)),
-      false);
-  // channel_config_set_chain_to(&cfg, dma2);
-  dma_channel_set_config(dma3, &cfg, false);
-}
-
 int main() {
   // bi_decl(bi_program_description("Sample binary"));
   // bi_decl(bi_1pin_with_name(LED_PIN, "on-board PIN"));
@@ -196,7 +96,7 @@ int main() {
     sleep_ms(2);
   }
 
-  // stdio_uart_init_full(uart0, 1000000, 28, -1);
+  stdio_uart_init_full(uart0, 1000000, 28, -1);
 
   printf("Hello RP2040 Croco Cartridge %s-%s(%s)\n", git_Branch(),
          git_Describe(), git_AnyUncommittedChanges() ? "dirty" : "");
@@ -207,7 +107,7 @@ int main() {
   gpio_set_dir(PIN_GB_RESET, true);
   gpio_put(PIN_GB_RESET, 1);
 
-  pio_gpio_init(pio1, 28);
+  // pio_gpio_init(pio1, 28);
   // gpio_init(PIN_UART_TX);
   // gpio_set_dir(PIN_UART_TX, true);
 
@@ -256,7 +156,8 @@ int main() {
                                          offset_write_data);
 
   // copy the gameboy main double speed statemachine to RAM
-  for (size_t i=0; i < (sizeof(_mainStateMachineCopy) / sizeof(uint16_t)); i++) {
+  for (size_t i = 0; i < (sizeof(_mainStateMachineCopy) / sizeof(uint16_t));
+       i++) {
     _mainStateMachineCopy[i] = gameboy_bus_double_speed_program_instructions[i];
   }
 
@@ -268,14 +169,6 @@ int main() {
 
   GbDma_Setup();
   GbDma_SetupHigherDmaDirectSsi();
-
-  // setup_read_dma_method2(pio1, SMC_GB_RAM_READ, pio0, SMC_GB_WRITE_DATA,
-  //                        &ram_base);
-  // setup_write_dma_method2(pio1, SMC_GB_RAM_WRITE, &ram_base);
-  // setup_read_dma_method2(pio0, SMC_GB_ROM_HIGH, pio0, SMC_GB_WRITE_DATA,
-  //                        &rom_high_base);
-  // setup_read_dma_method2(pio0, SMC_GB_ROM_LOW, pio0, SMC_GB_WRITE_DATA,
-  //                        &rom_low_base);
 
   // enable all gameboy state machines
   pio_sm_set_enabled(pio1, SMC_GB_MAIN, true);
@@ -550,7 +443,8 @@ void __no_inline_not_in_flash_func(loadDoubleSpeedPio)() {
   pio_sm_set_enabled(pio1, SMC_GB_MAIN, false);
 
   // manually replace statemachine instruction in order to not use flash
-  for (size_t i=0; i < (sizeof(_mainStateMachineCopy) / sizeof(uint16_t)); i++) {
+  for (size_t i = 0; i < (sizeof(_mainStateMachineCopy) / sizeof(uint16_t));
+       i++) {
     uint16_t instr = _mainStateMachineCopy[i];
     pio1->instr_mem[_offset_main + i] =
         pio_instr_bits_jmp != _pio_major_instr_bits(instr)
