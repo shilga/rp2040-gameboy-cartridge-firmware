@@ -50,6 +50,7 @@
 #include "GlobalDefines.h"
 #include "RomStorage.h"
 #include "webusb.h"
+#include "ws2812b_spi.h"
 
 #include "gameboy_bus.pio.h"
 
@@ -127,6 +128,11 @@ int main() {
     /* Initialise PIO0 pins. */
     pio_gpio_init(pio0, pin);
   }
+
+  // initialize SPI for WS2812B RGB LED
+  ws2812b_spi_init(spi1);
+  gpio_set_function(WS2812_PIN, GPIO_FUNC_SPI);
+  ws2812b_setRgb(0, 0, 0);
 
   // Load the gameboy_bus programs into it's respective PIOs
   _offset_main = pio_add_program(pio1, &gameboy_bus_program);
@@ -235,7 +241,7 @@ int main() {
 
       _lastRunningGame = 0xFF;
 
-      // pio_sm_put_blocking(pio0, SMC_WS2812, 0x150000 << 8);
+      ws2812b_setRgb(0, 0x10, 0); // light up LED in green
     }
   }
 
@@ -303,16 +309,16 @@ uint8_t __no_inline_not_in_flash_func(runGbBootloader)() {
         if (addr == 0xB001) {
           switch (data) {
           case 1:
-            // pio_sm_put_blocking(pio0, SMC_WS2812, 0x001500 << 8);
+            ws2812b_setRgb(0x15, 0, 0);
             break;
           case 2:
-            // pio_sm_put_blocking(pio0, SMC_WS2812, 0x150000 << 8);
+            ws2812b_setRgb(0, 0x15, 0);
             break;
           case 3:
-            // pio_sm_put_blocking(pio0, SMC_WS2812, 0x000015 << 8);
+            ws2812b_setRgb(0, 0, 0x15);
             break;
           default:
-            // pio_sm_put_blocking(pio0, SMC_WS2812, 0);
+            ws2812b_setRgb(0, 0, 0);
             break;
           }
         }
@@ -418,7 +424,7 @@ void loadGame(uint8_t game) {
     return;
   }
 
-  // pio_sm_put_blocking(pio0, SMC_WS2812, 0);
+  ws2812b_setRgb(0, 0, 0);
 
   switch (mbc) {
   case 0x00:

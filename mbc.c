@@ -17,6 +17,7 @@
 
 #include "GbDma.h"
 #include "GlobalDefines.h"
+#include "ws2812b_spi.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -157,7 +158,7 @@ void __no_inline_not_in_flash_func(runMbc1Game)(uint8_t game,
           break;
         case 0xA000: // write to RAM
           if (!ram_dirty) {
-            // pio0->txf[SMC_WS2812] = 0x00150000; // switch on LED to red
+            ws2812b_setRgb(0x10, 0, 0); // switch on LED to red
             ram_dirty = true;
           }
           break;
@@ -252,7 +253,7 @@ void __no_inline_not_in_flash_func(runMbc3Game)(uint8_t game,
           break;
         case 0xA000: // write to RAM
           if (!ram_dirty) {
-            // pio0->txf[SMC_WS2812] = 0x00150000; // switch on LED to red
+            ws2812b_setRgb(0x10, 0, 0); // switch on LED to red
             ram_dirty = true;
           }
           break;
@@ -345,7 +346,7 @@ void __no_inline_not_in_flash_func(runMbc5Game)(uint8_t game,
           break;
         case 0xA000: // write to RAM
           if (!ram_dirty) {
-            // pio0->txf[SMC_WS2812] = 0x00150000; // switch on LED to red
+            ws2812b_setRgb(0x10, 0, 0); // switch on LED to red
             ram_dirty = true;
           }
           break;
