@@ -47,12 +47,12 @@ jobs:
     - name: Package artifacts
       run: |
         cd ${{env.GITHUB_WORKSPACE}}/build
-        tar cvzf rp2040-gb-cartridge-${{env.GITHUB_REF_NAME}}.tgz rp2040-gb-cartridge.elf rp2040-gb-cartridge.uf2
+        tar cvzf rp2040-gb-cartridge-${{ github.ref_name }}.tgz rp2040-gb-cartridge.elf rp2040-gb-cartridge.uf2
 
     - name: Upload artifact
       uses: actions/upload-artifact@v3
       with:
-        name: rp2040-gameboy-cartridge-${{env.GITHUB_REF_NAME}}
+        name: rp2040-gameboy-cartridge-${{ github.ref_name }}
         path: |
           ${{env.GITHUB_WORKSPACE}}/build/*.tgz
 
@@ -67,6 +67,11 @@ jobs:
     steps:
       - name: Download Artifact
         uses: actions/download-artifact@v3
+        with:
+          merge-multiple: true
+
+      - name: list files
+        run: ls
 
       - name: Release
         if: startsWith(github.ref, 'refs/tags/')
