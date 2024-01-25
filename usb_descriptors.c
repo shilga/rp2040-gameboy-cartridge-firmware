@@ -50,8 +50,8 @@ tusb_desc_device_t const desc_device =
     .bDeviceProtocol    = 0,
     .bMaxPacketSize0    = CFG_TUD_ENDPOINT0_SIZE,
 
-    .idVendor           = 0xCafe,
-    .idProduct          = 0x2142,
+    .idVendor           = 0x2E8A, // Raspberry Foundation
+    .idProduct          = 0x107F, // Allocated Product ID for this project https://github.com/raspberrypi/usb-pid/commit/7348deef80a85d155ddba314879453577d52d23b
     .bcdDevice          = 0x0100,
 
     .iManufacturer      = 0x01,
