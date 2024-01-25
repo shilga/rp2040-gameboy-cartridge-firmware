@@ -101,9 +101,9 @@ int main() {
 
   stdio_uart_init_full(uart0, 1000000, 28, -1);
 
-  printf("Hello RP2040 Croco Cartridge %d.%d.%d %s-%s(%s)\n",
+  printf("Hello RP2040 Croco Cartridge %d.%d.%d %s-%.7X(%s)\n",
          RP2040_GB_CARTRIDGE_VERSION_MAJOR, RP2040_GB_CARTRIDGE_VERSION_MINOR,
-         RP2040_GB_CARTRIDGE_VERSION_PATCH, git_Branch(), git_Describe(),
+         RP2040_GB_CARTRIDGE_VERSION_PATCH, git_Branch(), git_CommitSHA1Short(),
          git_AnyUncommittedChanges() ? "dirty" : "");
 
   printf("SSI->BAUDR: %x\n", *((uint32_t *)(XIP_SSI_BASE + SSI_BAUDR_OFFSET)));
@@ -282,7 +282,7 @@ uint8_t __no_inline_not_in_flash_func(runGbBootloader)() {
   memcpy(memory, GB_BOOTLOADER, GB_BOOTLOADER_SIZE);
   memset(ram, 0, GB_RAM_BANK_SIZE);
 
-  shared_data->git_sha1 = strtoul(git_Describe(), NULL, 16);
+  shared_data->git_sha1 = git_CommitSHA1Short();
   shared_data->git_status = git_AnyUncommittedChanges();
   shared_data->buildType = RP2040_GB_CARTRIDGE_BUILD_VERSION_TYPE;
   shared_data->versionMajor = RP2040_GB_CARTRIDGE_VERSION_MAJOR;

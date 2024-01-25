@@ -17,16 +17,21 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <tusb.h>
 
 #include <pico/stdio.h>
 #include <pico/stdio_uart.h>
 
+#include <git_commit.h>
+
+#include "BuildVersion.h"
 #include "GlobalDefines.h"
 #include "device/usbd.h"
 #include "usb_descriptors.h"
 
+#include "BuildVersion.h"
 #include "RomStorage.h"
 
 static bool web_serial_connected = false;
@@ -43,6 +48,7 @@ const tusb_desc_webusb_url_t desc_url = {.bLength = 3 + sizeof(URL) - 1,
 
 static void webserial_task(void);
 static void handle_command(uint8_t command);
+static int handle_device_info_command(uint8_t buff[63]);
 static int handle_new_rom_command(uint8_t buff[63]);
 static int handle_rom_upload_command(uint8_t buff[63]);
 static int handle_request_rom_info_command(uint8_t buff[63]);
@@ -195,6 +201,9 @@ static void handle_command(uint8_t command) {
     response_length =
         handle_savegame_received_chunk_command(&command_buffer[1]);
     break;
+  case 254:
+    response_length = handle_device_info_command(&command_buffer[1]);
+    break;
   default:
     printf("webusb: unknown command\n");
     response_length = -1;
@@ -211,6 +220,22 @@ static void handle_command(uint8_t command) {
 
   tud_vendor_write(command_buffer, response_length);
   tud_vendor_flush();
+}
+
+static int handle_device_info_command(uint8_t buff[63]) {
+  uint32_t git_sha1 = git_CommitSHA1Short();
+  buff[0] = 1; // messageFormatVersion
+  buff[1] = 1; // hwVersion
+  buff[2] = RP2040_GB_CARTRIDGE_VERSION_MAJOR;
+  buff[3] = RP2040_GB_CARTRIDGE_VERSION_MINOR;
+  buff[4] = RP2040_GB_CARTRIDGE_VERSION_PATCH;
+  buff[5] = RP2040_GB_CARTRIDGE_BUILD_VERSION_TYPE;
+  buff[6] = (git_sha1 >> 24) & 0xFF;
+  buff[7] = (git_sha1 >> 16) & 0xFF;
+  buff[8] = (git_sha1 >> 8) & 0xFF;
+  buff[9] = git_sha1 & 0xFF;
+  buff[10] = git_AnyUncommittedChanges();
+  return 11;
 }
 
 static int handle_new_rom_command(uint8_t buff[63]) {
