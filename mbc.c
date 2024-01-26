@@ -300,6 +300,7 @@ void __no_inline_not_in_flash_func(runMbc5Game)(uint8_t game,
   const uint8_t ram_banks_mask = num_ram_banks - 1;
 
   memcpy(memory, g_shortRomInfos[game].firstBank, GB_ROM_BANK_SIZE);
+  memcpy(&memory[GB_ROM_BANK_SIZE], g_loadedRomBanks[1], GB_ROM_BANK_SIZE);
 
   rom_high_base = g_loadedRomBanks[1];
   rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[1];
@@ -394,9 +395,11 @@ void __no_inline_not_in_flash_func(detect_speed_change)(uint16_t addr,
   case 0x0000:
     data = memory[addr & 0x3FFFU];
     break;
-  // case 0x4000:
-  //   data = g_loadedRomBanks[rom_bank][addr & 0x3FFFU];
-  //   break;
+  case 0x4000:
+    if (rom_bank == 1) {
+      data = memory[(addr & 0x3FFFU) + GB_ROM_BANK_SIZE];
+    }
+    break;
   default:
     break;
   }
