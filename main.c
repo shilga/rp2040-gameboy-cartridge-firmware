@@ -15,6 +15,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <assert.h>
 #include <hardware/address_mapped.h>
 #include <hardware/dma.h>
 #include <hardware/gpio.h>
@@ -78,6 +79,7 @@ static lfs_t _lfs = {};
 static uint8_t _lfsFileBuffer[LFS_CACHE_SIZE];
 
 static uint _offset_main;
+static uint _offset_write_data;
 static uint16_t _mainStateMachineCopy
     [sizeof(gameboy_bus_double_speed_program_instructions) / sizeof(uint16_t)];
 
@@ -144,7 +146,7 @@ int main() {
       pio_add_program(pio1, &gameboy_bus_detect_a14_program);
   uint offset_ram = pio_add_program(pio1, &gameboy_bus_ram_program);
 
-  uint offset_write_data =
+  _offset_write_data =
       pio_add_program(pio0, &gameboy_bus_write_to_data_program);
   uint offset_rom_low = pio_add_program(pio0, &gameboy_bus_rom_low_program);
   uint offset_rom_high = pio_add_program(pio0, &gameboy_bus_rom_high_program);
@@ -163,7 +165,7 @@ int main() {
   gameboy_bus_rom_low_program_init(pio0, SMC_GB_ROM_LOW, offset_rom_low);
   gameboy_bus_rom_high_program_init(pio0, SMC_GB_ROM_HIGH, offset_rom_high);
   gameboy_bus_write_to_data_program_init(pio0, SMC_GB_WRITE_DATA,
-                                         offset_write_data);
+                                         _offset_write_data);
 
   // copy the gameboy main double speed statemachine to RAM
   for (size_t i = 0; i < (sizeof(_mainStateMachineCopy) / sizeof(uint16_t));
@@ -471,6 +473,30 @@ void __no_inline_not_in_flash_func(loadDoubleSpeedPio)() {
   }
 
   pio_sm_set_enabled(pio1, SMC_GB_MAIN, true);
+
+  /*
+   * The sleep cycle of the Gameboy during the clock switch causes some
+   * missfetching of RAM reads in some games. Clearing the TX FIFO fixes that.
+   * There is enough time to do that as the Gameboy needs around 15 ms to change
+   * the clock speed.
+   */
+
+  pio_sm_exec(pio0, SMC_GB_WRITE_DATA, pio_encode_jmp(_offset_write_data));
+
+  // wait for 2 ms until all DMA and SMs are stable
+  uint64_t now = time_us_64();
+  while ((time_us_64() - now) < 2000) {
+    tight_loop_contents();
+  }
+
+  // flush the tx buffers and reset the write data SM back to waiting for data
+  pio_sm_clear_fifos(pio0, SMC_GB_WRITE_DATA);
+  while (pio0->sm[SMC_GB_WRITE_DATA].instr != 0x80a0) {
+    pio_sm_exec(pio0, SMC_GB_WRITE_DATA, pio_encode_jmp(_offset_write_data));
+    while (pio_sm_is_exec_stalled(pio0, SMC_GB_WRITE_DATA)) {
+      tight_loop_contents();
+    }
+  }
 }
 
 void __no_inline_not_in_flash_func(setSsi8bit)() {
