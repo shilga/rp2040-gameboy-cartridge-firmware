@@ -125,24 +125,32 @@ public write_wrap:                                      ; *** WRITE state machin
     pull block                                 ; pull the data from the Tx FIFO into the OSR
     out  pins 8  side 0                             ; output 8 bits of data
     mov  osr ~NULL                             ; OSR=FFFFFFFF
-    wait 0 gpio PIN_CLK                        ; wait for clk
     out  pindirs 8                             ; start driving the data bus
+    wait 0 gpio PIN_CLK                        ; wait for clk
     mov  osr NULL
-    wait 1 gpio PIN_CLK                     ; wait for clk
+    wait 1 gpio PIN_CLK[3]                     ; wait for clk
     out  pindirs 8                          ; stop driving the data bus
     .wrap ; wrap back to beginning
 
 
 .program gameboy_bus_detect_a15_low_a14_irqs
-.side_set 1 opt
 a14_high:
     irq set 1
 .wrap_target
-    wait 1 gpio PIN_A15
+    wait 0 gpio PIN_CLK
+public entry_point:
+    wait 1 gpio PIN_CLK[2]
+    mov  isr null
+    in pins 1 ; shift in a15
+    mov y isr ; store a15 pin in y
+    jmp  !y hdma_read ; GBC has the HDMA read which does not strobe A15
     wait 0 gpio PIN_A15
+continue_hdma_read:
     jmp pin a14_high ; if A14 is high
     irq set 0 ; if a A14 is low
     .wrap
+hdma_read:
+    jmp continue_hdma_read [30]
 
 
 .program gameboy_bus_rom_low
@@ -234,8 +242,9 @@ idle:
     void gameboy_bus_detect_a15_low_a14_irqs_init(PIO pio, uint sm, uint offset) {
         pio_sm_config c = gameboy_bus_detect_a15_low_a14_irqs_program_get_default_config(offset);
         sm_config_set_jmp_pin (&c, PIN_A14);
-        sm_config_set_sideset_pins(&c, PIN_UART_TX);
-        pio_sm_init(pio, sm, offset, &c);
+        sm_config_set_in_pins(&c, PIN_A15);
+        sm_config_set_in_shift( &c, true, false, 32);  // shift right=false, auto-push=false
+        pio_sm_init(pio, sm, offset + gameboy_bus_detect_a15_low_a14_irqs_offset_entry_point, &c);
     }
 
     void gameboy_bus_rom_low_program_init(PIO pio, uint sm, uint offset) {
