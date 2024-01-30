@@ -22,15 +22,10 @@
 #include <lfs.h>
 #include <stdint.h>
 
-struct RomInfo {
-  uint16_t numRomBanks;
-  uint16_t numRamBanks;
-  uint8_t mbc;
-};
-
 int RomStorage_init(lfs_t *lfs);
 
-int RomStorage_StartNewRomTransfer(uint16_t num_banks, const char *name);
+int RomStorage_StartNewRomTransfer(uint16_t num_banks, uint16_t speedSwitchBank,
+                                   const char *name);
 
 int RomStorage_TransferRomChunk(uint16_t bank, uint16_t chunk,
                                 const uint8_t data[32]);
@@ -49,6 +44,6 @@ int RomStorage_StartRamDownload(uint8_t rom);
 int RomStorage_TransferRamUploadChunk(uint16_t bank, uint16_t chunk,
                                       const uint8_t data[32]);
 
-const struct RomInfo *RomStorage_LoadRom(uint8_t rom);
+const int RomStorage_LoadRom(uint8_t rom);
 
 #endif /* D05D89A4_C956_401B_9A8D_564BE51C4811 */

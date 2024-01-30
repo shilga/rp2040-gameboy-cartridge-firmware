@@ -32,7 +32,7 @@
 #include <hardware/sync.h>
 #include <pico/platform.h>
 
-void detect_speed_change(uint16_t addr, uint16_t rom_bank);
+void detect_speed_change(uint16_t addr, bool isSpeedSwitchBank);
 
 void __no_inline_not_in_flash_func(runNoMbcGame)(uint8_t game) {
   memcpy(memory, g_loadedRomBanks[0], GB_ROM_BANK_SIZE);
@@ -298,15 +298,22 @@ void __no_inline_not_in_flash_func(runMbc5Game)(uint8_t game,
   bool ram_dirty = 0;
   const uint16_t rom_banks_mask = num_rom_banks - 1;
   const uint8_t ram_banks_mask = num_ram_banks - 1;
+  uint16_t speedSwitchBank = 1U;
+
+  if (g_shortRomInfos[game].speedSwitchBank <= num_rom_banks) {
+    speedSwitchBank = g_shortRomInfos[game].speedSwitchBank;
+  }
 
   memcpy(memory, g_shortRomInfos[game].firstBank, GB_ROM_BANK_SIZE);
-  memcpy(&memory[GB_ROM_BANK_SIZE], g_loadedRomBanks[1], GB_ROM_BANK_SIZE);
+  memcpy(&memory[GB_ROM_BANK_SIZE], g_loadedRomBanks[speedSwitchBank],
+         GB_ROM_BANK_SIZE);
 
   rom_high_base = g_loadedRomBanks[1];
   rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[1];
 
   printf("MBC5 game loaded\n");
   printf("initial bank %d a %p\n", rom_bank, g_loadedRomBanks[1]);
+  printf("speedSwitchBank %d\n", speedSwitchBank);
 
   pio_sm_set_enabled(pio0, SMC_GB_ROM_HIGH, true);
 
@@ -376,7 +383,7 @@ void __no_inline_not_in_flash_func(runMbc5Game)(uint8_t game,
           ram_base = &ram_memory[ram_bank * GB_RAM_BANK_SIZE];
         }
       } else { // read
-        detect_speed_change(addr, rom_bank);
+        detect_speed_change(addr, rom_bank == speedSwitchBank);
       }
     }
   }
@@ -388,15 +395,15 @@ enum eDETECT_SPEED_CHANGE_STATE {
   SPEED_CHANGE_KEY1,
 } _speedChangeState = SPEED_CHANGE_IDLE;
 
-void __no_inline_not_in_flash_func(detect_speed_change)(uint16_t addr,
-                                                        uint16_t rom_bank) {
+void __no_inline_not_in_flash_func(detect_speed_change)(
+    uint16_t addr, bool isSpeedSwitchBank) {
   uint8_t data = 0;
   switch (addr & 0xC000) {
   case 0x0000:
     data = memory[addr & 0x3FFFU];
     break;
   case 0x4000:
-    if (rom_bank == 1) {
+    if (isSpeedSwitchBank) {
       data = memory[(addr & 0x3FFFU) + GB_ROM_BANK_SIZE];
     }
     break;

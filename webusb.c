@@ -224,7 +224,7 @@ static void handle_command(uint8_t command) {
 
 static int handle_device_info_command(uint8_t buff[63]) {
   uint32_t git_sha1 = git_CommitSHA1Short();
-  buff[0] = 1; // messageFormatVersion
+  buff[0] = 2; // featureStep
   buff[1] = 1; // hwVersion
   buff[2] = RP2040_GB_CARTRIDGE_VERSION_MAJOR;
   buff[3] = RP2040_GB_CARTRIDGE_VERSION_MINOR;
@@ -239,19 +239,20 @@ static int handle_device_info_command(uint8_t buff[63]) {
 }
 
 static int handle_new_rom_command(uint8_t buff[63]) {
-  uint16_t num_banks;
+  uint16_t num_banks, speedSwitchBank;
 
-  uint32_t count = tud_vendor_read(buff, 19);
-  if (count != 19) {
+  uint32_t count = tud_vendor_read(buff, 21);
+  if (count != 21) {
     printf("wrong number of bytes for new rom command\n");
     return -1;
   }
 
   num_banks = (buff[0] << 8) + buff[1];
+  speedSwitchBank = (buff[19] << 8) + buff[20];
   buff[18] = 0; // force zero terminate received string
 
   buff[0] = 0;
-  if (RomStorage_StartNewRomTransfer(num_banks,
+  if (RomStorage_StartNewRomTransfer(num_banks, speedSwitchBank,
                                      (char *)&buff[sizeof(uint16_t)]) < 0) {
     buff[0] = 1;
   }

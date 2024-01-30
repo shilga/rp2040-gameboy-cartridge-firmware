@@ -56,6 +56,7 @@ struct ShortRomInfo {
   char name[17];
   const uint8_t *firstBank;
   uint8_t numRamBanks;
+  uint16_t speedSwitchBank;
 };
 
 extern struct ShortRomInfo g_shortRomInfos[MAX_ALLOWED_ROMS];

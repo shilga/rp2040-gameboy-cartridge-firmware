@@ -49,6 +49,8 @@
 #define TRANSFER_CHUNK_SIZE 32
 #define CHUNKS_PER_BANK (GB_ROM_BANK_SIZE / TRANSFER_CHUNK_SIZE)
 
+#define ROMINFO_FILE_MAGIC 0xCAFEBABE
+
 static lfs_t *_lfs = NULL;
 static uint8_t _lfsFileBuffer[LFS_CACHE_SIZE];
 struct lfs_file_config _fileconfig = {.buffer = _lfsFileBuffer};
@@ -62,11 +64,9 @@ struct __attribute__((__packed__)) RomInfoFile {
   uint32_t magic;
   char name[17];
   uint16_t numBanks;
+  uint16_t speedSwitchBank;
   uint16_t banks[MAX_BANKS_PER_ROM];
-};
-
-static struct RomInfoFile _romInfoFile;
-static struct RomInfo _romInfo;
+} _romInfoFile;
 
 static uint8_t _bankBuffer[GB_ROM_BANK_SIZE];
 static uint16_t _lastTransferredBank = 0xFFFF;
@@ -79,6 +79,32 @@ static uint8_t _ramTransferCurrentRom = 0xFFU;
 
 static bool _romTransferActive = false;
 static bool _ramTransferActive = false;
+
+static int readRomInfoFile(lfs_file_t *file) {
+  int lfs_err = 0;
+  lfs_err = lfs_file_read(_lfs, file, &_romInfoFile,
+                          offsetof(struct RomInfoFile, speedSwitchBank));
+  if (lfs_err != offsetof(struct RomInfoFile, speedSwitchBank)) {
+    printf("Error reading header %d\n", lfs_err);
+    return lfs_err;
+  }
+
+  if (_romInfoFile.magic == ROMINFO_FILE_MAGIC) {
+    lfs_err = lfs_file_read(_lfs, file, &_romInfoFile.speedSwitchBank,
+                            sizeof(uint16_t));
+  } else {
+    _romInfoFile.speedSwitchBank = 0xFFFFU;
+  }
+
+  lfs_err = lfs_file_read(_lfs, file, &_romInfoFile.banks,
+                          _romInfoFile.numBanks * sizeof(uint16_t));
+  if (lfs_err != _romInfoFile.numBanks * sizeof(uint16_t)) {
+    printf("Error reading banks %d\n", lfs_err);
+    return lfs_err;
+  }
+
+  return 0;
+}
 
 int RomStorage_init(lfs_t *lfs) {
   int lfs_err = 0;
@@ -117,21 +143,12 @@ int RomStorage_init(lfs_t *lfs) {
         return -1;
       }
 
-      lfs_err = lfs_file_read(_lfs, &file, &_romInfoFile,
-                              offsetof(struct RomInfoFile, banks));
-      if (lfs_err != offsetof(struct RomInfoFile, banks)) {
-        printf("Error reading header %d\n", lfs_err);
-        return -1;
-      }
-
-      lfs_err = lfs_file_read(_lfs, &file, &_romInfoFile.banks,
-                              _romInfoFile.numBanks * sizeof(uint16_t));
-      if (lfs_err != _romInfoFile.numBanks * sizeof(uint16_t)) {
-        printf("Error reading banks %d\n", lfs_err);
-        return -1;
-      }
+      lfs_err = readRomInfoFile(&file);
 
       lfs_file_close(_lfs, &file);
+      if (lfs_err != LFS_ERR_OK) {
+        return -1;
+      }
 
       for (size_t i = 0; i < _romInfoFile.numBanks; i++) {
         SetBit(_usedBanksFlags, _romInfoFile.banks[i]);
@@ -146,6 +163,7 @@ int RomStorage_init(lfs_t *lfs) {
       g_shortRomInfos[g_numRoms].firstBank = firstBankPointer;
       g_shortRomInfos[g_numRoms].numRamBanks =
           GameBoyHeader_readRamBankCount(firstBankPointer);
+      g_shortRomInfos[g_numRoms].speedSwitchBank = _romInfoFile.speedSwitchBank;
       g_numRoms++;
     }
 
@@ -162,7 +180,8 @@ int RomStorage_init(lfs_t *lfs) {
   return 0;
 }
 
-int RomStorage_StartNewRomTransfer(uint16_t num_banks, const char *name) {
+int RomStorage_StartNewRomTransfer(uint16_t num_banks, uint16_t speedSwitchBank,
+                                   const char *name) {
   bool bank_allocated;
   size_t current_search_bank = 0;
   struct lfs_info lfsInfo;
@@ -185,7 +204,9 @@ int RomStorage_StartNewRomTransfer(uint16_t num_banks, const char *name) {
     return -1;
   }
 
+  _romInfoFile.magic = ROMINFO_FILE_MAGIC;
   _romInfoFile.numBanks = num_banks;
+  _romInfoFile.speedSwitchBank = speedSwitchBank;
   memcpy(_romInfoFile.name, name, sizeof(_romInfoFile.name) - 1);
   _romInfoFile.name[sizeof(_romInfoFile.name) - 1] = 0;
 
@@ -494,16 +515,16 @@ int RomStorage_TransferRamUploadChunk(uint16_t bank, uint16_t chunk,
   return 0;
 }
 
-const struct RomInfo *RomStorage_LoadRom(uint8_t rom) {
+const int RomStorage_LoadRom(uint8_t rom) {
   int lfs_err;
   lfs_file_t file;
 
   if (rom >= g_numRoms) {
-    return NULL;
+    return -1;
   }
 
   if (_romTransferActive) {
-    return NULL;
+    return -2;
   }
 
   memcpy(&_fileNameBuffer[6], g_shortRomInfos[rom].name, 17);
@@ -514,29 +535,21 @@ const struct RomInfo *RomStorage_LoadRom(uint8_t rom) {
                              &_fileconfig);
   if (lfs_err != LFS_ERR_OK) {
     printf("Error opening file %d\n", lfs_err);
-    return NULL;
+    return -3;
   }
 
-  lfs_err = lfs_file_read(_lfs, &file, &_romInfoFile,
-                          offsetof(struct RomInfoFile, banks));
-  if (lfs_err != offsetof(struct RomInfoFile, banks)) {
-    printf("Error reading header %d\n", lfs_err);
-    return NULL;
-  }
-
-  lfs_err = lfs_file_read(_lfs, &file, &_romInfoFile.banks,
-                          _romInfoFile.numBanks * sizeof(uint16_t));
-  if (lfs_err != _romInfoFile.numBanks * sizeof(uint16_t)) {
-    printf("Error reading banks %d\n", lfs_err);
-    return NULL;
-  }
+  lfs_err = readRomInfoFile(&file);
 
   lfs_file_close(_lfs, &file);
+
+  if (lfs_err != LFS_ERR_OK) {
+    return -4;
+  }
 
   for (size_t i = 0; i < _romInfoFile.numBanks; i++) {
     g_loadedRomBanks[i] = RomBankToPointer(_romInfoFile.banks[i]);
     g_loadedDirectAccessRomBanks[i] = RomBankToDirectSsi(_romInfoFile.banks[i]);
   }
 
-  return &_romInfo;
+  return 0;
 }

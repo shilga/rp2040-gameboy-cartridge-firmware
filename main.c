@@ -433,7 +433,7 @@ void loadGame(uint8_t game) {
     return;
   }
 
-  if (NULL == RomStorage_LoadRom(game)) {
+  if (0 != RomStorage_LoadRom(game)) {
     printf("Error reading ROM\n");
     return;
   }
