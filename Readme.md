@@ -50,12 +50,12 @@ I have the idea to write some mechanism to hook into the VBlank interrupt of the
 combination. That would ease up things as no reset would be needed. But this is just an plan/idea for now.
 
 ## Known limitations
-- The data cannot be loaded fast enough from the external flash for double speed mode of the GBC. And the RP2040 has not enough RAM to hold
-  full ROM. Except the smaller ones like Tetris.
-  This means that most Gameboy Color games will not work. But there are exceptions which only use normal speed (eg Pokemon Silver/Gold).
-  Classic Gameboy games should work fine and are tested on DMG, GBC, GBA
-- As the RP2040 needs to be overclocked to achieve fastest reading speeds from the flash the power draw is pretty high.
-  This could mean the power supply of the original Gameboy can't handle the cartridge if combined with a fancy IPS screen.
+- Gameboy Color games in double speed mode currently do not work on the GBA. Timings are very tight in this mode and it's unsure if there is ever
+  a solution to this problem. It works fine on the normal GBC though. (Tested on 3 different consoles)
+- Not all Gameboy Color ROMs are guaranteed to work. In theory all ROMs should work, but in practice the the cartridge has to detect if the GBC
+  switched to double speed mode. This algorithm is not perfect and might need some adjustment. If a ROM is not working drop a hint through issues.
+- As the RP2040 needs to be overclocked to achieve fastest reading speeds from the flash the power draw is higher than from an orignal cartridge.
+  This could mean the power supply of the original Gameboy can't handle the cartridge. Especially if combined with a fancy IPS screen.
   But if you have installed an IPS screen you should consider upgrading the power supply anyway to get rid of the noise on the speakers.
 
 ## What else can it do?
@@ -65,7 +65,7 @@ a controller? An interesting example is the actually the Bootloader of this proj
 unused, the first core is only switching banks while a Gameboy game is running. Lots of unused CPU power.
 
 ## Does LSDJ work?
-Yes. 128k saves are supported.
+Yes. 128k saves are supported. With the newest releases it also runs on the GBC.
 
 ## How can I get the needed hardware?
 Find the Kicad project files in this [repo](https://github.com/shilga/rp2040-gameboy-cartridge). Or order one on [Tindie](https://www.tindie.com/products/32710/).
