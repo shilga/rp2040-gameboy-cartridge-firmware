@@ -1,0 +1,19 @@
+<mxfile host="Electron" modified="2024-01-26T18:26:02.215Z" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/23.0.2 Chrome/120.0.6099.109 Electron/28.1.0 Safari/537.36" etag="6vHI3konuO4fGPnHo23U" version="23.0.2" type="device">
+  <diagram name="Page-1" id="ZQZOgU54nTzQ9CoTmgB9">
+    <mxGraphModel dx="1098" dy="988" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="3CpMgqsQxP3-fB3q6XEd-1" value="RP2040 firmware + GB Bootloader&lt;br&gt;128 KiB" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="240" y="260" width="210" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="3CpMgqsQxP3-fB3q6XEd-2" value="ROM Storage&lt;br&gt;14208 KiB (~13.9 MiB)&lt;br&gt;888 Game Boy ROM banks" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="240" y="310" width="210" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="3CpMgqsQxP3-fB3q6XEd-3" value="LiitleFS&lt;br&gt;2048 KiB (2 MiB)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="240" y="480" width="210" height="50" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
