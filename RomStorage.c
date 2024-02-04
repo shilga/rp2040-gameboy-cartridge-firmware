@@ -225,6 +225,7 @@ int RomStorage_StartNewRomTransfer(uint16_t num_banks, uint16_t speedSwitchBank,
   }
 
   printf("Allocated %d banks for new ROM %s\n", num_banks, name);
+  printf("ROM uses bank %d for speed switch\n", speedSwitchBank);
 
   for (size_t i = 0; i < num_banks; i++) {
     uint32_t flashAddr = (_romInfoFile.banks[i] * GB_ROM_BANK_SIZE) +

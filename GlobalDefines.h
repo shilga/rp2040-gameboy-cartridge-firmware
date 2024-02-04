@@ -46,11 +46,11 @@
 
 extern const volatile uint8_t *volatile ram_base;
 extern const volatile uint8_t *volatile rom_low_base;
-extern const volatile uint8_t *volatile rom_high_base;
 extern volatile uint32_t rom_high_base_flash_direct;
 
 extern uint8_t memory[];
 extern uint8_t ram_memory[];
+extern uint8_t memory_vblank_hook_bank[];
 
 struct ShortRomInfo {
   char name[17];
@@ -66,6 +66,9 @@ extern const uint8_t *g_loadedRomBanks[MAX_BANKS_PER_ROM];
 extern uint32_t g_loadedDirectAccessRomBanks[MAX_BANKS_PER_ROM];
 
 void setSsi8bit();
+void setSsi32bit();
 void loadDoubleSpeedPio();
+void storeSaveRamInFile(uint32_t game);
+void restoreSaveRamFromFile(uint32_t game);
 
 #endif /* A6E4EABE_18C1_4BCB_A021_7C59DEE53104 */

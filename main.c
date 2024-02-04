@@ -38,6 +38,7 @@
 #include <stdio_ext.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/_intsup.h>
 #include <sys/_types.h>
 
 #include <lfs.h>
@@ -52,6 +53,7 @@
 #include "GbDma.h"
 #include "GlobalDefines.h"
 #include "RomStorage.h"
+#include "mbc.h"
 #include "webusb.h"
 #include "ws2812b_spi.h"
 
@@ -59,10 +61,11 @@
 
 const volatile uint8_t *volatile ram_base = NULL;
 const volatile uint8_t *volatile rom_low_base = NULL;
-const volatile uint8_t *volatile rom_high_base = NULL;
 volatile uint32_t rom_high_base_flash_direct = 0;
 
 uint8_t memory[GB_ROM_BANK_SIZE * 2] __attribute__((aligned(GB_ROM_BANK_SIZE)));
+uint8_t memory_vblank_hook_bank[0x1100]
+    __attribute__((aligned(GB_ROM_BANK_SIZE)));
 uint8_t __attribute__((section(".noinit.")))
 ram_memory[(GB_MAX_RAM_BANKS + 1) * GB_RAM_BANK_SIZE]
     __attribute__((aligned(GB_RAM_BANK_SIZE)));
@@ -83,12 +86,7 @@ static uint _offset_write_data;
 static uint16_t _mainStateMachineCopy
     [sizeof(gameboy_bus_double_speed_program_instructions) / sizeof(uint16_t)];
 
-uint8_t runGbBootloader();
-void loadGame(uint8_t game);
-void runNoMbcGame(uint8_t game);
-void runMbc1Game(uint8_t game, uint16_t num_rom_banks, uint8_t num_ram_banks);
-void runMbc3Game(uint8_t game, uint16_t num_rom_banks, uint8_t num_ram_banks);
-void runMbc5Game(uint8_t game, uint16_t num_rom_banks, uint8_t num_ram_banks);
+void runGbBootloader(uint8_t *selectedGame, uint8_t *selectedGameMode);
 
 int main() {
   // bi_decl(bi_program_description("Sample binary"));
@@ -177,7 +175,6 @@ int main() {
   // DMAs
   ram_base = &ram_memory[GB_MAX_RAM_BANKS * GB_RAM_BANK_SIZE];
   rom_low_base = memory;
-  rom_high_base = &memory[GB_ROM_BANK_SIZE];
 
   GbDma_Setup();
   GbDma_SetupHigherDmaDirectSsi();
@@ -224,39 +221,25 @@ int main() {
     printf("Game %d was running before reset\n", _lastRunningGame);
 
     if (g_shortRomInfos[_lastRunningGame].numRamBanks > 0) {
-      lfs_file_t file;
-      struct lfs_file_config fileconfig = {.buffer = _lfsFileBuffer};
-      char filenamebuffer[40] = "saves/";
-      strcpy(&filenamebuffer[strlen(filenamebuffer)],
-             (const char *)&(g_shortRomInfos[_lastRunningGame].name));
-      printf("Saving game RAM to file %s\n", filenamebuffer);
-
-      lfs_err = lfs_file_opencfg(&_lfs, &file, filenamebuffer,
-                                 LFS_O_WRONLY | LFS_O_CREAT, &fileconfig);
-
-      if (lfs_err != LFS_ERR_OK) {
-        printf("Error opening file %d\n", lfs_err);
-      }
-
-      lfs_err = lfs_file_write(&_lfs, &file, ram_memory,
-                               g_shortRomInfos[_lastRunningGame].numRamBanks *
-                                   GB_RAM_BANK_SIZE);
-      printf("wrote %d bytes\n", lfs_err);
-
-      lfs_file_close(&_lfs, &file);
+      storeSaveRamInFile(_lastRunningGame);
 
       _lastRunningGame = 0xFF;
-
-      ws2812b_setRgb(0, 0x10, 0); // light up LED in green
     }
   }
 
-  uint8_t game = runGbBootloader();
-  // uint8_t game = 5; // 11: Zelda DX, 5: Repugnant, 8: Tetris, 9: Yoshi
+  uint8_t game = 0xFF, mode = 0;
+
+  runGbBootloader(&game, &mode);
 
   (void)save_and_disable_interrupts();
 
-  loadGame(game);
+  _lastRunningGame = game;
+
+  if (0 != RomStorage_LoadRom(game)) {
+    printf("Error reading ROM\n");
+  } else {
+    loadGame(game, mode);
+  }
 
   // should only be reached in case there was an error loading the game
   while (1) {
@@ -275,11 +258,14 @@ struct __attribute__((packed)) SharedGameboyData {
   uint8_t rom_names;
 };
 
-uint8_t __no_inline_not_in_flash_func(runGbBootloader)() {
-  uint8_t selectedGame = 0xFF;
+void __no_inline_not_in_flash_func(runGbBootloader)(uint8_t *selectedGame,
+                                                    uint8_t *selectedGameMode) {
   // use spare RAM bank to not overwrite potential save
   uint8_t *ram = &ram_memory[GB_MAX_RAM_BANKS * GB_RAM_BANK_SIZE];
   struct SharedGameboyData *shared_data = (void *)ram;
+
+  *selectedGame = 0xFF;
+  *selectedGameMode = 0xFF;
 
   memcpy(memory, GB_BOOTLOADER, GB_BOOTLOADER_SIZE);
   memset(ram, 0, GB_RAM_BANK_SIZE);
@@ -297,7 +283,7 @@ uint8_t __no_inline_not_in_flash_func(runGbBootloader)() {
     memcpy(&pRomNames[i * 16], &(g_shortRomInfos[i].name), 16);
   }
   shared_data->number_of_roms = g_numRoms;
-  ram[0x1000] = 0xFF;
+  ram[0x1001] = 0xFF;
 
   printf("Found %d games\n", g_numRoms);
 
@@ -307,7 +293,7 @@ uint8_t __no_inline_not_in_flash_func(runGbBootloader)() {
 
   gpio_put(PIN_GB_RESET, 0); // let the gameboy start (deassert reset line)
 
-  while (selectedGame == 0xFF) {
+  while (*selectedGame == 0xFF) {
     if (!pio_sm_is_rx_fifo_empty(pio1, SMC_GB_MAIN)) {
       uint32_t rdAndAddr = *((uint32_t *)(&pio1->rxf[SMC_GB_MAIN]));
       bool write = rdAndAddr & 0x00000001;
@@ -316,11 +302,12 @@ uint8_t __no_inline_not_in_flash_func(runGbBootloader)() {
       if (write) {
         uint8_t data = pio_sm_get_blocking(pio1, SMC_GB_MAIN) & 0xFF;
 
-        if (addr == 0xB000) {
-          printf("Selected Game: %d\n", data);
-          selectedGame = data;
+        if ((addr == 0xB002) && (data == 42)) {
+          *selectedGame = ram[0x1001];
+          *selectedGameMode = ram[0x1000];
+          printf("Selected Game: %d\n", *selectedGame);
         }
-        if (addr == 0xB001) {
+        if (addr == 0xB010) {
           switch (data) {
           case 1:
             ws2812b_setRgb(0x15, 0, 0);
@@ -337,7 +324,7 @@ uint8_t __no_inline_not_in_flash_func(runGbBootloader)() {
           }
         }
 
-        if (addr == 0xB010) {
+        if (addr == 0xB011) {
           sleep_ms(50);
           reset_usb_boot(0, 0);
         }
@@ -351,112 +338,6 @@ uint8_t __no_inline_not_in_flash_func(runGbBootloader)() {
 
   // hold the gameboy in reset until we have loaded the game
   gpio_put(PIN_GB_RESET, 1);
-
-  return selectedGame;
-}
-
-void loadGame(uint8_t game) {
-  uint8_t mbc = 0xFF;
-  uint16_t num_rom_banks = 0;
-  uint8_t num_ram_banks = 0;
-
-  lfs_file_t file;
-  struct lfs_file_config fileconfig = {.buffer = _lfsFileBuffer};
-  char filenamebuffer[40] = "saves/";
-
-  const uint8_t *gameptr = g_shortRomInfos[game].firstBank;
-
-  printf("Loading selected game info at %p:\n", gameptr);
-
-  switch (gameptr[0x0147]) {
-  case 0x00:
-    mbc = 0;
-    break;
-  case 0x01:
-  case 0x02:
-  case 0x03:
-    mbc = 1;
-    break;
-  case 0x05:
-  case 0x06:
-  case 0x07:
-    mbc = 2;
-    break;
-  case 0x0F:
-  case 0x10:
-  case 0x11:
-  case 0x12:
-  case 0x13:
-    mbc = 3;
-    break;
-  case 0x19:
-  case 0x1A:
-  case 0x1B:
-  case 0x1C:
-  case 0x1D:
-  case 0x1E:
-    mbc = 5;
-    break;
-  }
-
-  num_rom_banks = 1 << (gameptr[0x0148] + 1);
-  num_ram_banks = g_shortRomInfos[game].numRamBanks;
-
-  printf("MBC:       %d\n", mbc);
-  printf("name:      %s\n", (const char *)&gameptr[0x134]);
-  printf("rom banks: %d\n", num_rom_banks);
-  printf("ram banks: %d\n", num_ram_banks);
-
-  if (num_ram_banks > 0) {
-    strcpy(&filenamebuffer[strlen(filenamebuffer)], g_shortRomInfos[game].name);
-
-    int lfs_err = lfs_file_opencfg(&_lfs, &file, filenamebuffer, LFS_O_RDONLY,
-                                   &fileconfig);
-
-    if (lfs_err == LFS_ERR_OK) {
-      printf("found save at %s\n", filenamebuffer);
-
-      lfs_err = lfs_file_read(&_lfs, &file, ram_memory,
-                              num_ram_banks * GB_RAM_BANK_SIZE);
-      printf("read %d bytes\n", lfs_err);
-
-      if (lfs_err >= 0) {
-        lfs_file_close(&_lfs, &file);
-      }
-    }
-  }
-
-  _lastRunningGame = game;
-
-  if (num_ram_banks > GB_MAX_RAM_BANKS) {
-    printf("Game needs too much RAM\n");
-    return;
-  }
-
-  if (0 != RomStorage_LoadRom(game)) {
-    printf("Error reading ROM\n");
-    return;
-  }
-
-  ws2812b_setRgb(0, 0, 0);
-
-  switch (mbc) {
-  case 0x00:
-    runNoMbcGame(game);
-    break;
-  case 0x01:
-    runMbc1Game(game, num_rom_banks, num_ram_banks);
-    break;
-  case 0x03:
-    runMbc3Game(game, num_rom_banks, num_ram_banks);
-    break;
-  case 0x05:
-    runMbc5Game(game, num_rom_banks, num_ram_banks);
-    break;
-  default:
-    printf("Unsupported MBC!\n");
-    break;
-  }
 }
 
 void __no_inline_not_in_flash_func(loadDoubleSpeedPio)() {
@@ -514,10 +395,75 @@ void __no_inline_not_in_flash_func(setSsi8bit)() {
   ssi_hw->ssienr = 1; // enable SSI again
 }
 
+void __no_inline_not_in_flash_func(setSsi32bit)() {
+  ssi_hw->ssienr = 0; // disable SSI so it can be configured
+  ssi_hw->ctrlr0 =
+      (SSI_CTRLR0_SPI_FRF_VALUE_QUAD /* Quad I/O mode */
+       << SSI_CTRLR0_SPI_FRF_LSB) |
+      (31 << SSI_CTRLR0_DFS_32_LSB) |    /* 32 data bits */
+      (SSI_CTRLR0_TMOD_VALUE_EEPROM_READ /* Send INST/ADDR, Receive Data */
+       << SSI_CTRLR0_TMOD_LSB);
+
+  ssi_hw->dmacr = 0;
+  ssi_hw->ssienr = 1; // enable SSI again
+
+  __compiler_memory_barrier();
+}
+
 void __attribute__((__noreturn__))
 __assert_fail(const char *expr, const char *file, unsigned int line,
               const char *function) {
   printf("assert");
   while (1)
     ;
+}
+
+void restoreSaveRamFromFile(uint32_t game) {
+  lfs_file_t file;
+  struct lfs_file_config fileconfig = {.buffer = _lfsFileBuffer};
+  char filenamebuffer[40] = "saves/";
+
+  strcpy(&filenamebuffer[strlen(filenamebuffer)], g_shortRomInfos[game].name);
+
+  int lfs_err =
+      lfs_file_opencfg(&_lfs, &file, filenamebuffer, LFS_O_RDONLY, &fileconfig);
+
+  if (lfs_err == LFS_ERR_OK) {
+    printf("found save at %s\n", filenamebuffer);
+
+    lfs_err =
+        lfs_file_read(&_lfs, &file, ram_memory,
+                      g_shortRomInfos[game].numRamBanks * GB_RAM_BANK_SIZE);
+    printf("read %d bytes\n", lfs_err);
+
+    if (lfs_err >= 0) {
+      lfs_file_close(&_lfs, &file);
+    }
+  }
+}
+
+void storeSaveRamInFile(uint32_t game) {
+  lfs_file_t file;
+  int lfs_err;
+  struct lfs_file_config fileconfig = {.buffer = _lfsFileBuffer};
+  char filenamebuffer[40] = "saves/";
+  strcpy(&filenamebuffer[strlen(filenamebuffer)],
+         (const char *)&(g_shortRomInfos[game].name));
+  printf("Saving game RAM to file %s\n", filenamebuffer);
+
+  lfs_err = lfs_file_opencfg(&_lfs, &file, filenamebuffer,
+                             LFS_O_WRONLY | LFS_O_CREAT, &fileconfig);
+
+  if (lfs_err != LFS_ERR_OK) {
+    printf("Error opening file %d\n", lfs_err);
+  }
+
+  lfs_err =
+      lfs_file_write(&_lfs, &file, ram_memory,
+                     g_shortRomInfos[game].numRamBanks * GB_RAM_BANK_SIZE);
+  printf("wrote %d bytes\n", lfs_err);
+
+  lfs_file_close(&_lfs, &file);
+
+  ws2812b_setRgb(0, 0x10, 0); // light up LED in green
 }

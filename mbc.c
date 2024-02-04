@@ -15,10 +15,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include "mbc.h"
 #include "GbDma.h"
 #include "GlobalDefines.h"
 #include "ws2812b_spi.h"
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -30,22 +32,119 @@
 #include <hardware/regs/clocks.h>
 #include <hardware/structs/scb.h>
 #include <hardware/sync.h>
+#include <hardware/timer.h>
 #include <pico/platform.h>
 
+#include "handler_gb.h"
+
+static uint8_t _originalVblankHandler[8];
+static bool _ramDirty = false;
+static uint8_t _currentGame = 0xFF;
+static uint16_t _numRomBanks = 0;
+static uint8_t _numRamBanks = 0;
+static uint8_t _vBlankMode = 0;
+
+void runNoMbcGame();
+void runMbc1Game();
+void runMbc3Game();
+void runMbc5Game();
+
 void detect_speed_change(uint16_t addr, bool isSpeedSwitchBank);
+void process_vblank_hook(uint16_t addr);
+void initialize_vblank_hook();
+void storeCurrentlyRunningSaveGame();
 
-void __no_inline_not_in_flash_func(runNoMbcGame)(uint8_t game) {
+void loadGame(uint8_t game, uint8_t mode) {
+  uint8_t mbc = 0xFF;
+
+  const uint8_t *gameptr = g_shortRomInfos[game].firstBank;
+
+  printf("Loading selected game info at %p:\n", gameptr);
+
+  switch (gameptr[0x0147]) {
+  case 0x00:
+    mbc = 0;
+    break;
+  case 0x01:
+  case 0x02:
+  case 0x03:
+    mbc = 1;
+    break;
+  case 0x05:
+  case 0x06:
+  case 0x07:
+    mbc = 2;
+    break;
+  case 0x0F:
+  case 0x10:
+  case 0x11:
+  case 0x12:
+  case 0x13:
+    mbc = 3;
+    break;
+  case 0x19:
+  case 0x1A:
+  case 0x1B:
+  case 0x1C:
+  case 0x1D:
+  case 0x1E:
+    mbc = 5;
+    break;
+  }
+
+  _currentGame = game;
+  _numRomBanks = 1 << (gameptr[0x0148] + 1);
+  _numRamBanks = g_shortRomInfos[game].numRamBanks;
+  _vBlankMode = mode;
+
+  printf("MBC:       %d\n", mbc);
+  printf("name:      %s\n", (const char *)&gameptr[0x134]);
+  printf("rom banks: %d\n", _numRomBanks);
+  printf("ram banks: %d\n", _numRamBanks);
+
+  if (_numRamBanks > 0) {
+    restoreSaveRamFromFile(game);
+  } else {
+    _vBlankMode = 0;
+  }
+
+  if (_vBlankMode == 0xFF) {
+    _vBlankMode = 0;
+  }
+
+  if (_numRamBanks > GB_MAX_RAM_BANKS) {
+    printf("Game needs too much RAM\n");
+    return;
+  }
+
+  ws2812b_setRgb(0, 0, 0);
+
   memcpy(memory, g_loadedRomBanks[0], GB_ROM_BANK_SIZE);
-  memcpy(&memory[GB_ROM_BANK_SIZE], g_loadedRomBanks[1], GB_ROM_BANK_SIZE);
+  if (_vBlankMode) {
+    initialize_vblank_hook();
+  }
 
-  // rom_high_base_flash_direct =
-  //     ((((uint32_t)g_loadedRomBanks[1]) - 0x13000000UL) << 8U) | 0xA0;
+  switch (mbc) {
+  case 0x00:
+    runNoMbcGame(game);
+    break;
+  case 0x01:
+    runMbc1Game(game, _numRomBanks, _numRamBanks, mode);
+    break;
+  case 0x03:
+    runMbc3Game(game, _numRomBanks, _numRamBanks, mode);
+    break;
+  case 0x05:
+    runMbc5Game(game, _numRomBanks, _numRamBanks, mode);
+    break;
+  default:
+    printf("Unsupported MBC!\n");
+    break;
+  }
+}
 
+void __no_inline_not_in_flash_func(runNoMbcGame)() {
   rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[1];
-
-  pio_sm_set_enabled(pio0, SMC_GB_ROM_HIGH, true);
-
-  // rom_high_base = &(_games[game][GB_ROM_BANK_SIZE]);
 
   // disable RAM access state machines, they are not needed without any MBC
   pio_set_sm_mask_enabled(pio1,
@@ -89,13 +188,12 @@ void __no_inline_not_in_flash_func(runNoMbcGame)(uint8_t game) {
 
   // printf("awake\n");
 
-  while (1)
-    ;
+  while (1) {
+    tight_loop_contents();
+  }
 }
 
-void __no_inline_not_in_flash_func(runMbc1Game)(uint8_t game,
-                                                uint16_t num_rom_banks,
-                                                uint8_t num_ram_banks) {
+void __no_inline_not_in_flash_func(runMbc1Game)() {
   uint8_t rom_bank = 1;
   uint8_t rom_bank_new = 1;
   uint8_t rom_bank_high = 0;
@@ -106,12 +204,8 @@ void __no_inline_not_in_flash_func(runMbc1Game)(uint8_t game,
   bool ram_enabled = 0;
   bool new_ram_enabled = 0;
   bool mode_select = 0;
-  bool ram_dirty = 0;
-  uint16_t rom_banks_mask = num_rom_banks - 1;
+  uint16_t rom_banks_mask = _numRomBanks - 1;
 
-  memcpy(memory, g_shortRomInfos[game].firstBank, GB_ROM_BANK_SIZE);
-
-  rom_high_base = g_loadedRomBanks[1];
   rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[1];
 
   printf("MBC1 game loaded\n");
@@ -157,9 +251,9 @@ void __no_inline_not_in_flash_func(runMbc1Game)(uint8_t game,
           mode_select = (data & 1);
           break;
         case 0xA000: // write to RAM
-          if (!ram_dirty) {
+          if (!_ramDirty) {
             ws2812b_setRgb(0x10, 0, 0); // switch on LED to red
-            ram_dirty = true;
+            _ramDirty = true;
           }
           break;
         default:
@@ -176,7 +270,6 @@ void __no_inline_not_in_flash_func(runMbc1Game)(uint8_t game,
 
         if (rom_bank != rom_bank_new) {
           rom_bank = rom_bank_new;
-          rom_high_base = g_loadedRomBanks[rom_bank];
           rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[rom_bank];
         }
 
@@ -190,14 +283,16 @@ void __no_inline_not_in_flash_func(runMbc1Game)(uint8_t game,
           ram_bank = ram_bank_local;
           ram_base = &ram_memory[ram_bank * GB_RAM_BANK_SIZE];
         }
+      } else { // read
+        if (_vBlankMode) {
+          process_vblank_hook(addr);
+        }
       }
     }
   }
 }
 
-void __no_inline_not_in_flash_func(runMbc3Game)(uint8_t game,
-                                                uint16_t num_rom_banks,
-                                                uint8_t num_ram_banks) {
+void __no_inline_not_in_flash_func(runMbc3Game)() {
   uint8_t rom_bank = 1;
   uint8_t rom_bank_new = 1;
   uint8_t ram_bank = GB_MAX_RAM_BANKS;
@@ -205,12 +300,8 @@ void __no_inline_not_in_flash_func(runMbc3Game)(uint8_t game,
   uint8_t ram_bank_local = GB_MAX_RAM_BANKS;
   bool ram_enabled = 0;
   bool new_ram_enabled = 0;
-  bool ram_dirty = 0;
-  uint16_t rom_banks_mask = num_rom_banks - 1;
+  uint16_t rom_banks_mask = _numRomBanks - 1;
 
-  memcpy(memory, g_shortRomInfos[game].firstBank, GB_ROM_BANK_SIZE);
-
-  rom_high_base = g_loadedRomBanks[1];
   rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[1];
 
   printf("MBC3 game loaded\n");
@@ -252,9 +343,9 @@ void __no_inline_not_in_flash_func(runMbc3Game)(uint8_t game,
 
           break;
         case 0xA000: // write to RAM
-          if (!ram_dirty) {
+          if (!_ramDirty) {
             ws2812b_setRgb(0x10, 0, 0); // switch on LED to red
-            ram_dirty = true;
+            _ramDirty = true;
           }
           break;
         default:
@@ -266,7 +357,6 @@ void __no_inline_not_in_flash_func(runMbc3Game)(uint8_t game,
 
         if (rom_bank != rom_bank_new) {
           rom_bank = rom_bank_new;
-          rom_high_base = g_loadedRomBanks[rom_bank];
           rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[rom_bank];
         }
 
@@ -280,14 +370,16 @@ void __no_inline_not_in_flash_func(runMbc3Game)(uint8_t game,
           ram_bank = ram_bank_local;
           ram_base = &ram_memory[ram_bank * GB_RAM_BANK_SIZE];
         }
+      } else { // read
+        if (_vBlankMode) {
+          process_vblank_hook(addr);
+        }
       }
     }
   }
 }
 
-void __no_inline_not_in_flash_func(runMbc5Game)(uint8_t game,
-                                                uint16_t num_rom_banks,
-                                                uint8_t num_ram_banks) {
+void __no_inline_not_in_flash_func(runMbc5Game)() {
   uint16_t rom_bank = 1;
   uint16_t rom_bank_new = 1;
   uint8_t ram_bank = GB_MAX_RAM_BANKS;
@@ -295,20 +387,17 @@ void __no_inline_not_in_flash_func(runMbc5Game)(uint8_t game,
   uint8_t ram_bank_local = GB_MAX_RAM_BANKS;
   bool ram_enabled = 0;
   bool new_ram_enabled = 0;
-  bool ram_dirty = 0;
-  const uint16_t rom_banks_mask = num_rom_banks - 1;
-  const uint8_t ram_banks_mask = num_ram_banks - 1;
+  const uint16_t rom_banks_mask = _numRomBanks - 1;
+  const uint8_t ram_banks_mask = _numRamBanks - 1;
   uint16_t speedSwitchBank = 1U;
 
-  if (g_shortRomInfos[game].speedSwitchBank <= num_rom_banks) {
-    speedSwitchBank = g_shortRomInfos[game].speedSwitchBank;
+  if (g_shortRomInfos[_currentGame].speedSwitchBank <= _numRomBanks) {
+    speedSwitchBank = g_shortRomInfos[_currentGame].speedSwitchBank;
   }
 
-  memcpy(memory, g_shortRomInfos[game].firstBank, GB_ROM_BANK_SIZE);
   memcpy(&memory[GB_ROM_BANK_SIZE], g_loadedRomBanks[speedSwitchBank],
          GB_ROM_BANK_SIZE);
 
-  rom_high_base = g_loadedRomBanks[1];
   rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[1];
 
   printf("MBC5 game loaded\n");
@@ -353,9 +442,9 @@ void __no_inline_not_in_flash_func(runMbc5Game)(uint8_t game,
 
           break;
         case 0xA000: // write to RAM
-          if (!ram_dirty) {
+          if (!_ramDirty) {
             ws2812b_setRgb(0x10, 0, 0); // switch on LED to red
-            ram_dirty = true;
+            _ramDirty = true;
           }
           break;
         default:
@@ -368,7 +457,6 @@ void __no_inline_not_in_flash_func(runMbc5Game)(uint8_t game,
 
         if (rom_bank != rom_bank_new) {
           rom_bank = rom_bank_new;
-          rom_high_base = g_loadedRomBanks[rom_bank];
           rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[rom_bank];
         }
 
@@ -383,6 +471,9 @@ void __no_inline_not_in_flash_func(runMbc5Game)(uint8_t game,
           ram_base = &ram_memory[ram_bank * GB_RAM_BANK_SIZE];
         }
       } else { // read
+        if (_vBlankMode) {
+          process_vblank_hook(addr);
+        }
         detect_speed_change(addr, rom_bank == speedSwitchBank);
       }
     }
@@ -436,4 +527,80 @@ void __no_inline_not_in_flash_func(detect_speed_change)(
     }
     break;
   }
+}
+
+enum eVBLANK_HOOK_STATE {
+  VBLANK_HOOK_IDLE = 0,
+  VBLANK_HOOK_INTERRUPT,
+  VBLANK_HOOK_PROCESSING,
+  VBLANK_HOOK_SAVE_TRIGGERED,
+  VBLANK_HOOK_RETURNED
+} volatile _vblankHookState = VBLANK_HOOK_IDLE;
+
+void __no_inline_not_in_flash_func(process_vblank_hook)(uint16_t addr) {
+  if (_vblankHookState == VBLANK_HOOK_IDLE) {
+    if (addr == 0x40) {
+      rom_low_base = memory_vblank_hook_bank;
+      _vblankHookState = VBLANK_HOOK_INTERRUPT;
+    }
+  } else if (_vblankHookState == VBLANK_HOOK_INTERRUPT) {
+    if (addr == 0x200) {
+      _vblankHookState = VBLANK_HOOK_PROCESSING;
+      memcpy(&memory_vblank_hook_bank[0x40], _originalVblankHandler,
+             sizeof(_originalVblankHandler));
+      memcpy(&memory[0x40], _originalVblankHandler,
+             sizeof(_originalVblankHandler));
+    }
+  } else if (_vblankHookState == VBLANK_HOOK_PROCESSING) {
+    if (addr == 0x300) {
+      _vblankHookState = VBLANK_HOOK_SAVE_TRIGGERED;
+
+      storeCurrentlyRunningSaveGame();
+      memory_vblank_hook_bank[0x1010] = 0xaa;
+    } else if (addr == 0x40) {
+      rom_low_base = memory;
+      _vblankHookState = VBLANK_HOOK_RETURNED;
+    }
+  } else if (_vblankHookState == VBLANK_HOOK_RETURNED) {
+    if (addr > 0x47) {
+      _vblankHookState = VBLANK_HOOK_IDLE;
+      memcpy(&memory[0x40], &handler_gb[0x40], sizeof(_originalVblankHandler));
+      memcpy(&memory_vblank_hook_bank[0x40], &handler_gb[0x40],
+             sizeof(_originalVblankHandler));
+      memory_vblank_hook_bank[0x1010] = 0;
+    }
+  } else if (_vblankHookState == VBLANK_HOOK_SAVE_TRIGGERED) {
+    if (addr == 0x40) {
+      rom_low_base = memory;
+      _vblankHookState = VBLANK_HOOK_RETURNED;
+    }
+  } else {
+  }
+}
+
+void initialize_vblank_hook() {
+  memcpy(memory_vblank_hook_bank, handler_gb, handler_gb_len);
+  memcpy(_originalVblankHandler, &memory[0x40], sizeof(_originalVblankHandler));
+  memcpy(&memory[0x40], &handler_gb[0x40], sizeof(_originalVblankHandler));
+  memory_vblank_hook_bank[0x1010] = 0;
+}
+
+void __no_inline_not_in_flash_func(storeCurrentlyRunningSaveGame)() {
+
+  // disable master SM while store is happening to prevent FIFO overflow.
+  pio_set_sm_mask_enabled(pio1, (1 << SMC_GB_MAIN), false);
+
+  setSsi32bit();
+  __compiler_memory_barrier();
+
+  storeSaveRamInFile(_currentGame);
+
+  ws2812b_setRgb(0, 0x10, 0);
+
+  setSsi8bit();
+  __compiler_memory_barrier();
+
+  _ramDirty = false;
+
+  pio_set_sm_mask_enabled(pio1, (1 << SMC_GB_MAIN), true);
 }
