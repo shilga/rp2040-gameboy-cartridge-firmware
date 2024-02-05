@@ -1,9 +1,14 @@
 {
-  "image": "shilga/raspberry-pi-pico-gbdk-docker:v0.2",
+  "image": "shilga/raspberry-pi-pico-gbdk-docker:v0.3",
   "name": "GBCartridgeDevContainer",
   "customizations": {
     "vscode": {
-      "extensions": ["llvm-vs-code-extensions.vscode-clangd"]
+      "extensions": [
+        "llvm-vs-code-extensions.vscode-clangd",
+        "chris-hock.pioasm",
+        "donaldhays.rgbds-z80",
+        "akiramiyakoda.cppincludeguard"
+      ]
     }
   }
 }

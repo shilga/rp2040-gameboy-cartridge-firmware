@@ -51,6 +51,7 @@ extern volatile uint32_t rom_high_base_flash_direct;
 extern uint8_t memory[];
 extern uint8_t ram_memory[];
 extern uint8_t memory_vblank_hook_bank[];
+extern uint8_t memory_vblank_hook_bank2[];
 
 struct ShortRomInfo {
   char name[17];

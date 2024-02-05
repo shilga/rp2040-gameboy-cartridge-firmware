@@ -35,14 +35,14 @@
 #include <hardware/timer.h>
 #include <pico/platform.h>
 
-#include "handler_gb.h"
+#include "gb-vblankhook/gbSaveGameVBlankHook.h"
 
-static uint8_t _originalVblankHandler[8];
 static bool _ramDirty = false;
 static uint8_t _currentGame = 0xFF;
 static uint16_t _numRomBanks = 0;
 static uint8_t _numRamBanks = 0;
 static uint8_t _vBlankMode = 0;
+static uint8_t *_bankWithVBlankOverride = &memory[2 * GB_ROM_BANK_SIZE];
 
 void runNoMbcGame();
 void runMbc1Game();
@@ -544,30 +544,25 @@ void __no_inline_not_in_flash_func(process_vblank_hook)(uint16_t addr) {
       _vblankHookState = VBLANK_HOOK_INTERRUPT;
     }
   } else if (_vblankHookState == VBLANK_HOOK_INTERRUPT) {
-    if (addr == 0x200) {
+    if (addr == 0x50) {
+      rom_low_base = memory_vblank_hook_bank2;
       _vblankHookState = VBLANK_HOOK_PROCESSING;
-      memcpy(&memory_vblank_hook_bank[0x40], _originalVblankHandler,
-             sizeof(_originalVblankHandler));
-      memcpy(&memory[0x40], _originalVblankHandler,
-             sizeof(_originalVblankHandler));
     }
   } else if (_vblankHookState == VBLANK_HOOK_PROCESSING) {
-    if (addr == 0x300) {
+    if (addr == 0x100) {
       _vblankHookState = VBLANK_HOOK_SAVE_TRIGGERED;
 
       storeCurrentlyRunningSaveGame();
-      memory_vblank_hook_bank[0x1010] = 0xaa;
+      memory_vblank_hook_bank2[0x1FF] = 0xaa;
     } else if (addr == 0x40) {
       rom_low_base = memory;
       _vblankHookState = VBLANK_HOOK_RETURNED;
     }
   } else if (_vblankHookState == VBLANK_HOOK_RETURNED) {
-    if (addr > 0x47) {
+    if ((addr & 0xFFF8) != 0x40) {
       _vblankHookState = VBLANK_HOOK_IDLE;
-      memcpy(&memory[0x40], &handler_gb[0x40], sizeof(_originalVblankHandler));
-      memcpy(&memory_vblank_hook_bank[0x40], &handler_gb[0x40],
-             sizeof(_originalVblankHandler));
-      memory_vblank_hook_bank[0x1010] = 0;
+      rom_low_base = _bankWithVBlankOverride;
+      memory_vblank_hook_bank2[0x1FF] = 0;
     }
   } else if (_vblankHookState == VBLANK_HOOK_SAVE_TRIGGERED) {
     if (addr == 0x40) {
@@ -579,10 +574,15 @@ void __no_inline_not_in_flash_func(process_vblank_hook)(uint16_t addr) {
 }
 
 void initialize_vblank_hook() {
-  memcpy(memory_vblank_hook_bank, handler_gb, handler_gb_len);
-  memcpy(_originalVblankHandler, &memory[0x40], sizeof(_originalVblankHandler));
-  memcpy(&memory[0x40], &handler_gb[0x40], sizeof(_originalVblankHandler));
-  memory_vblank_hook_bank[0x1010] = 0;
+  memcpy(memory_vblank_hook_bank, GB_VBLANK_HOOK, GB_VBLANK_HOOK_SIZE);
+  memcpy(memory_vblank_hook_bank2, memory_vblank_hook_bank,
+         GB_VBLANK_HOOK_SIZE);
+  memcpy(_bankWithVBlankOverride, memory, GB_ROM_BANK_SIZE);
+  memcpy(&_bankWithVBlankOverride[0x40], &memory_vblank_hook_bank[0x40], 8);
+  memcpy(&memory_vblank_hook_bank2[0x40], &memory[0x40], 8);
+  memory_vblank_hook_bank2[0x1FF] = 0;
+
+  rom_low_base = _bankWithVBlankOverride;
 }
 
 void __no_inline_not_in_flash_func(storeCurrentlyRunningSaveGame)() {

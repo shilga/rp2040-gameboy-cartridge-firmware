@@ -1,4 +1,4 @@
-include(bin2h.cmake)
+include("${CMAKE_CURRENT_LIST_DIR}/bin2h.cmake")
 
 bin2h(
     SOURCE_FILE ${SOURCE_FILE}

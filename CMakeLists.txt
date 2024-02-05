@@ -21,10 +21,12 @@ set(CMAKE_CXX_STANDARD 17)
 set(PICO_BOARD_HEADER_DIRS ${CMAKE_SOURCE_DIR})
 set(PICO_BOARD MyBoard)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
+set(CMAKE_HELPERS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cmakeHelpers)
 
 pico_sdk_init()
 
 add_subdirectory(gb-bootloader)
+add_subdirectory(gb-vblankhook)
 
 add_subdirectory(libs/pico-littlefs)
 target_compile_definitions(littlefs-lib PUBLIC LFS_NO_MALLOC LFS_YES_TRACE)
@@ -53,7 +55,10 @@ pico_enable_stdio_uart(${PROJECT_NAME} 1)
 # pico_set_printf_implementation(${PROJECT_NAME} none)
 pico_set_linker_script(${PROJECT_NAME} ${CMAKE_CURRENT_LIST_DIR}/linkerscript.ld)
 
-add_dependencies(${PROJECT_NAME} BootloaderGb_hdr)
+add_dependencies(${PROJECT_NAME}
+    BootloaderGb
+    gbSaveGameVBlankHook
+    )
 
 target_link_libraries(${PROJECT_NAME} 
     pico_stdlib
