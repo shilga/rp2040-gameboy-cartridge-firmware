@@ -205,9 +205,9 @@ void main() {
         gotoxy(2, 5);
         printf("Off");
         gotoxy(2, 6);
-        printf("Mode 1");
+        printf("Mode 1 (sel + b)");
         gotoxy(2, 7);
-        printf("Mode 2");
+        printf("Mode 2 (sel + dwn)");
 
         _cursorLines = 3;
         _cursor = 0;

@@ -518,7 +518,6 @@ void __no_inline_not_in_flash_func(detect_speed_change)(
       // speed change is triggered
       _speedChangeState = SPEED_CHANGE_IDLE;
       loadDoubleSpeedPio();
-      // ws2812b_setRgb(0, 0, 0x10);
     }
     break;
   default:
@@ -575,6 +574,11 @@ void __no_inline_not_in_flash_func(process_vblank_hook)(uint16_t addr) {
 
 void initialize_vblank_hook() {
   memcpy(memory_vblank_hook_bank, GB_VBLANK_HOOK, GB_VBLANK_HOOK_SIZE);
+
+  if (_vBlankMode == 2) {
+    memory_vblank_hook_bank[0x84] = 0x5F; // replace with opcode for bit 3, a
+  }
+
   memcpy(memory_vblank_hook_bank2, memory_vblank_hook_bank,
          GB_VBLANK_HOOK_SIZE);
   memcpy(_bankWithVBlankOverride, memory, GB_ROM_BANK_SIZE);

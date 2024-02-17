@@ -67,11 +67,10 @@ check_for_save_trigger:
     ; we now that select is being held, or we would not have ended up here
 
     ; check for b
-    ; bit 5,a
-    ; jp nz, trigger_saving
+    bit 5,a
     
     ; check for down
-    bit 3,a
+    ; bit 3,a
     jp nz, trigger_saving
 
 do_nothing:
