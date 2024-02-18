@@ -301,11 +301,20 @@ void __no_inline_not_in_flash_func(runMbc3Game)() {
   bool ram_enabled = 0;
   bool new_ram_enabled = 0;
   uint16_t rom_banks_mask = _numRomBanks - 1;
+  uint16_t speedSwitchBank = 1U;
 
   rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[1];
 
+  if (g_shortRomInfos[_currentGame].speedSwitchBank <= _numRomBanks) {
+    speedSwitchBank = g_shortRomInfos[_currentGame].speedSwitchBank;
+  }
+
+  memcpy(&memory[GB_ROM_BANK_SIZE], g_loadedRomBanks[speedSwitchBank],
+         GB_ROM_BANK_SIZE);
+
   printf("MBC3 game loaded\n");
   printf("initial bank %d a %p\n", rom_bank, g_loadedRomBanks[1]);
+  printf("speedSwitchBank %d\n", speedSwitchBank);
 
   pio_sm_set_enabled(pio0, SMC_GB_ROM_HIGH, true);
 
@@ -374,6 +383,7 @@ void __no_inline_not_in_flash_func(runMbc3Game)() {
         if (_vBlankMode) {
           process_vblank_hook(addr);
         }
+        detect_speed_change(addr, rom_bank == speedSwitchBank);
       }
     }
   }
