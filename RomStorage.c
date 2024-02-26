@@ -187,7 +187,7 @@ int RomStorage_StartNewRomTransfer(uint16_t num_banks, uint16_t speedSwitchBank,
   struct lfs_info lfsInfo;
   int lfs_err;
 
-  if ((g_numRoms + 1) >= MAX_ALLOWED_ROMS) {
+  if ((g_numRoms + 1) > MAX_ALLOWED_ROMS) {
     printf("That is more ROMs as can be handled\n");
     return -1;
   }
