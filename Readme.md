@@ -69,3 +69,7 @@ Yes. 128k saves are supported. With the newest releases it also runs on the GBC.
 
 ## How can I get the needed hardware?
 Find the Kicad project files in this [repo](https://github.com/shilga/rp2040-gameboy-cartridge). Or order one on [Tindie](https://www.tindie.com/products/32710/).
+
+
+## Discord
+Find the Discord server to get help or discuss about this project. <https://discord.gg/dxRcBQSc>
