@@ -1,5 +1,5 @@
 {
-  "image": "shilga/raspberry-pi-pico-gbdk-docker:v0.3",
+  "image": "shilga/raspberry-pi-pico-gbdk-docker:v0.4",
   "name": "GBCartridgeDevContainer",
   "customizations": {
     "vscode": {

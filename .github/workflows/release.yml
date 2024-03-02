@@ -16,7 +16,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container: 
-      image: shilga/raspberry-pi-pico-gbdk-docker:v0.3
+      image: shilga/raspberry-pi-pico-gbdk-docker:v0.4
 
     steps:
     - uses: actions/checkout@v3

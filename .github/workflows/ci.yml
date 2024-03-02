@@ -19,7 +19,7 @@ jobs:
     # See: https://docs.github.com/en/free-pro-team@latest/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
     runs-on: ubuntu-latest
     container: 
-      image: shilga/raspberry-pi-pico-gbdk-docker:v0.3
+      image: shilga/raspberry-pi-pico-gbdk-docker:v0.4
 
     steps:
     - uses: actions/checkout@v3

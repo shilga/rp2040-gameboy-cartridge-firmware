@@ -30,43 +30,6 @@ uint8_t _cursor = 0;
 uint8_t _cursorLines = 0;
 uint8_t _cursorOffset = 0;
 
-UINT8 buttonPressed(UINT8 input, UINT8 key) {
-  if (input & key) {
-    waitpadup();
-
-    return TRUE;
-  }
-  return FALSE;
-}
-
-void ClearCursor() {
-  gotoxy(1, _cursor + _cursorOffset);
-  setchar(SPACE_CHAR);
-}
-
-void RenderCursor() {
-  gotoxy(1, _cursor + _cursorOffset);
-  setchar('>');
-}
-
-void moveCursor(UINT8 input) {
-  if (buttonPressed(input, J_UP)) {
-    if (_cursor > 0) {
-      ClearCursor();
-      _cursor--;
-      RenderCursor();
-    }
-  }
-
-  if (buttonPressed(input, J_DOWN)) {
-    if (_cursor < _cursorLines - 1) {
-      ClearCursor();
-      _cursor++;
-      RenderCursor();
-    }
-  }
-}
-
 struct SharedGameboyData {
   uint16_t git_sha1_l;
   uint16_t git_sha1_h;
@@ -87,28 +50,18 @@ uint8_t _currentGame = 0;
 
 font_t _font;
 
-void loadNewScreen(uint8_t newScreen) {
-  _currentScreen = newScreen;
-  _screenInitialized = 0;
-  _cursorOffset = 0;
-  _cursor = 0;
-}
+uint8_t buttonPressed(uint8_t input, uint8_t key);
+void clearCursor(void);
+void renderCursor(void);
+void moveCursor(uint8_t input);
+void loadNewScreen(uint8_t newScreen);
+void startGame(uint8_t game, uint8_t mode);
 
-void startGame(uint8_t game, uint8_t mode) {
-  (*(UBYTE *)(0xB000)) = mode;
-  (*(UBYTE *)(0xB001)) = game;
-  DISPLAY_OFF;
-  (*(UBYTE *)(0xB002)) = 42;
-  while (1) {
-    wait_vbl_done();
-  }
-}
+void main(void) {
+  uint8_t input = 0;
+  uint8_t gameCount;
 
-void main() {
-  UBYTE input = 0;
-  UINT8 gameCount;
-
-  UINT8 *titleAddress;
+  uint8_t *titleAddress;
 
   char text[17];
 
@@ -131,7 +84,7 @@ void main() {
   DISPLAY_ON;
 
   while (1) {
-    wait_vbl_done();
+    vsync();
 
     input = joypad();
 
@@ -159,7 +112,7 @@ void main() {
           _cursorLines = gameCount;
           _cursor = _currentGame;
           _cursorOffset = 1;
-          RenderCursor();
+          renderCursor();
         } else {
           gotoxy(2, 2);
           printf("No games found");
@@ -212,7 +165,7 @@ void main() {
         _cursorLines = 3;
         _cursor = 0;
         _cursorOffset = 5;
-        RenderCursor();
+        renderCursor();
 
         _screenInitialized = 1;
       }
@@ -279,7 +232,7 @@ void main() {
         _cursorLines = 4;
         _cursor = 0;
         _cursorOffset = 1;
-        RenderCursor();
+        renderCursor();
 
         _screenInitialized = 1;
       }
@@ -299,4 +252,58 @@ void main() {
       }
     }
   } // endless while
+}
+
+uint8_t buttonPressed(uint8_t input, uint8_t key) {
+  if (input & key) {
+    waitpadup();
+
+    return TRUE;
+  }
+  return FALSE;
+}
+
+void clearCursor(void) {
+  gotoxy(1, _cursor + _cursorOffset);
+  setchar(SPACE_CHAR);
+}
+
+void renderCursor(void) {
+  gotoxy(1, _cursor + _cursorOffset);
+  setchar('>');
+}
+
+void moveCursor(uint8_t input) {
+  if (buttonPressed(input, J_UP)) {
+    if (_cursor > 0) {
+      clearCursor();
+      _cursor--;
+      renderCursor();
+    }
+  }
+
+  if (buttonPressed(input, J_DOWN)) {
+    if (_cursor < _cursorLines - 1) {
+      clearCursor();
+      _cursor++;
+      renderCursor();
+    }
+  }
+}
+
+void loadNewScreen(uint8_t newScreen) {
+  _currentScreen = newScreen;
+  _screenInitialized = 0;
+  _cursorOffset = 0;
+  _cursor = 0;
+}
+
+void startGame(uint8_t game, uint8_t mode) {
+  (*(uint8_t *)(0xB000)) = mode;
+  (*(uint8_t *)(0xB001)) = game;
+  DISPLAY_OFF;
+  (*(uint8_t *)(0xB002)) = 42;
+  while (1) {
+    vsync();
+  }
 }
