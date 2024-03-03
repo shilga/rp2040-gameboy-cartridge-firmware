@@ -25,5 +25,8 @@ void GbDma_SetupHigherDmaDirectSsi();
 
 void GbDma_StartDmaDirect();
 
+void GbDma_EnableSaveRam();
+void GbDma_DisableSaveRam();
+void GbDma_EnableRtcRegister(uint8_t reg);
 
 #endif /* D2C8524D_9F5F_4D9E_BD87_3A37DED846AC */

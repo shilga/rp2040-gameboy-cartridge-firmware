@@ -48,6 +48,10 @@ volatile io_ro_32 *_rxFifoRamWrite = &(pio1->rxf[SMC_GB_RAM_WRITE]);
  * variable that can be used to let a DMA dummy transfer data
  */
 volatile uint32_t _devNull;
+volatile uint32_t *_devNullPtr = &_devNull;
+
+volatile uint8_t *_rtcLatchPtr = &g_rtcLatched.seconds;
+volatile uint8_t *_rtcRealPtr = &g_rtcReal.seconds;
 
 struct DmaCommand {
   const volatile void *read_addr;
@@ -56,37 +60,70 @@ struct DmaCommand {
 
 /* clang-format off */
 
-volatile uint32_t LOWER_ROM_READ_DMA_CTRL = (DMA_CHANNEL_ROM_LOWER_REQUESTOR << DMA_CH2_CTRL_TRIG_CHAIN_TO_LSB) | DMA_CH2_CTRL_TRIG_HIGH_PRIORITY_BITS | DMA_CH2_CTRL_TRIG_EN_BITS; 
-struct DmaCommand LOWER_ROM_READ[] = {
+static volatile uint32_t LOWER_ROM_READ_DMA_CTRL = (DMA_CHANNEL_ROM_LOWER_REQUESTOR << DMA_CH2_CTRL_TRIG_CHAIN_TO_LSB) | DMA_CH2_CTRL_TRIG_HIGH_PRIORITY_BITS | DMA_CH2_CTRL_TRIG_EN_BITS; 
+static struct DmaCommand LOWER_ROM_READ[] = {
   { &LOWER_ROM_READ_DMA_CTRL, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].al1_ctrl) }, // load the settings for this transfer into the MEMORY_ACCESOR_DMA control register
   { &_txFifoWriteData, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].write_addr) }, // load the addr of the tx-fifo of the write data PIO-SM into the write register of MEMORY_ACCESSOR_DMA
   { &(pio0->rxf[SMC_GB_ROM_LOW]), &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].read_addr) }, // load the addr from the rx-fifo of the PIO-SM triggering this transfer
   { &rom_low_base, hw_set_alias_untyped(&(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].al3_read_addr_trig)) }, // load the base addr, write it into the read-addr of the READ_DMA, xor-ing it with the addr received and trigger the READ_DMA transfer
   { NULL, NULL}
 };
-volatile void* _lowerRomReadCommands = &LOWER_ROM_READ[0];
 
-volatile uint32_t RAM_READ_DMA_CTRL = (DMA_CHANNEL_RAM_READ_REQUESTOR << DMA_CH2_CTRL_TRIG_CHAIN_TO_LSB) | DMA_CH2_CTRL_TRIG_HIGH_PRIORITY_BITS | DMA_CH2_CTRL_TRIG_EN_BITS; 
-struct DmaCommand RAM_READ[] = {
+static volatile uint32_t RAM_READ_DMA_CTRL = (DMA_CHANNEL_RAM_READ_REQUESTOR << DMA_CH2_CTRL_TRIG_CHAIN_TO_LSB) | DMA_CH2_CTRL_TRIG_HIGH_PRIORITY_BITS | DMA_CH2_CTRL_TRIG_EN_BITS; 
+static struct DmaCommand RAM_READ[] = {
   { &RAM_READ_DMA_CTRL, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].al1_ctrl) }, // load the settings for this transfer into the MEMORY_ACCESOR_DMA control register
   { &_txFifoWriteData, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].write_addr) }, // load the addr of the tx-fifo of the write data PIO-SM into the write register of MEMORY_ACCESSOR_DMA
   { &(pio1->rxf[SMC_GB_RAM_READ]), &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].read_addr) }, // load the addr from the rx-fifo of the PIO-SM triggering this transfer
   { &ram_base, hw_set_alias_untyped(&(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].al3_read_addr_trig)) }, // load the base addr, write it into the read-addr of the MEMORY_ACCESSOR_DMA, xor-ing it with the addr received and trigger the MEMORY_ACCESSOR_DMA transfer
   { NULL, NULL}
 };
-volatile void* _ramReadCommands = &RAM_READ[0];
 
-volatile uint32_t RAM_WRITE_DMA_CTRL = (DMA_CHANNEL_RAM_WRITE_REQUESTOR << DMA_CH2_CTRL_TRIG_CHAIN_TO_LSB) | DMA_CH2_CTRL_TRIG_HIGH_PRIORITY_BITS | DMA_CH2_CTRL_TRIG_EN_BITS | (DREQ_PIO1_RX3 << DMA_CH2_CTRL_TRIG_TREQ_SEL_LSB); 
-struct DmaCommand RAM_WRITE[] = {
+static volatile uint32_t RAM_WRITE_DMA_CTRL = (DMA_CHANNEL_RAM_WRITE_REQUESTOR << DMA_CH2_CTRL_TRIG_CHAIN_TO_LSB) | DMA_CH2_CTRL_TRIG_HIGH_PRIORITY_BITS | DMA_CH2_CTRL_TRIG_EN_BITS | (DREQ_PIO1_RX3 << DMA_CH2_CTRL_TRIG_TREQ_SEL_LSB); 
+static struct DmaCommand RAM_WRITE[] = {
   { &RAM_WRITE_DMA_CTRL, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].al1_ctrl) }, // setup MEMORY_ACCESSOR_DMA for this write to RAM transaction
   { &(pio1->rxf[SMC_GB_RAM_WRITE]), &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].write_addr) }, // load the addr from the rx-fifo of the PIO-SM triggering this transfer into the write addr of MEMORY_ACCESSOR_DMA
   { &ram_base, hw_set_alias_untyped(&(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].write_addr)) }, // load the base addr into the write addr of MEMORY_ACCESSOR_DMA, xor-ing it with the addr already there (received from rx-fifo)
   { &_rxFifoRamWrite, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].al3_read_addr_trig) }, // load the addr of the rx-fifo which will have the data to be written to RAM into the read register of MEMORY_ACCESSOR_DMA and trigger it's transfer
   { NULL, NULL}
 };
-volatile void* _ramWriteCommands = &RAM_WRITE[0];
+
+struct DmaCommand RAM_DUMMY_READ[] = {
+  { &RAM_READ_DMA_CTRL, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].al1_ctrl) }, // load the settings for this transfer into the MEMORY_ACCESOR_DMA control register
+  { &_devNullPtr, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].write_addr) }, // load the addr of the tx-fifo of the write data PIO-SM into the write register of MEMORY_ACCESSOR_DMA
+  { &(pio1->rxf[SMC_GB_RAM_READ]), &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].read_addr) }, // load the addr from the rx-fifo of the PIO-SM triggering this transfer
+  { &ram_base, hw_set_alias_untyped(&(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].al3_read_addr_trig)) }, // load the base addr, write it into the read-addr of the MEMORY_ACCESSOR_DMA, xor-ing it with the addr received and trigger the MEMORY_ACCESSOR_DMA transfer
+  { NULL, NULL}
+};
+
+static struct DmaCommand RAM_DUMMY_WRITE[] = {
+  { &RAM_WRITE_DMA_CTRL, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].al1_ctrl) }, // setup MEMORY_ACCESSOR_DMA for this write to RAM transaction
+  { &(pio1->rxf[SMC_GB_RAM_WRITE]), &_devNull }, // load the addr from the rx-fifo of the PIO-SM triggering this transfer into devNUll
+  { &_devNullPtr, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].write_addr) }, // load the addr of _devNull into write addr of MEMORY_ACCESSOR_DMA
+  { &_rxFifoRamWrite, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].al3_read_addr_trig) }, // load the addr of the rx-fifo which will have the data to be written to RAM into the read register of MEMORY_ACCESSOR_DMA and trigger it's transfer
+  { NULL, NULL}
+};
+
+struct DmaCommand RTC_READ[] = {
+  { &RAM_READ_DMA_CTRL, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].al1_ctrl) }, // load the settings for this transfer into the MEMORY_ACCESOR_DMA control register
+  { &_txFifoWriteData, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].write_addr) }, // load the addr of the tx-fifo of the write data PIO-SM into the write register of MEMORY_ACCESSOR_DMA
+  { &(pio1->rxf[SMC_GB_RAM_READ]), &_devNull }, // dummy read the addr from the rx-fifo of the PIO-SM triggering this transfer
+  { &_rtcLatchPtr, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].al3_read_addr_trig) }, // load the current rtc register addr, write it into the read-addr of the MEMORY_ACCESSOR_DMA and trigger the MEMORY_ACCESSOR_DMA transfer
+  { NULL, NULL}
+};
+
+static struct DmaCommand RTC_WRITE[] = {
+  { &RAM_WRITE_DMA_CTRL, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].al1_ctrl) }, // setup MEMORY_ACCESSOR_DMA for this write to RAM transaction
+  { &(pio1->rxf[SMC_GB_RAM_WRITE]), &_devNull }, // dummy load the addr from the rx-fifo of the PIO-SM triggering this transfer
+  { &_rtcRealPtr, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].write_addr) }, // load the current rtc register addr into the write addr of MEMORY_ACCESSOR_DMA
+  { &_rxFifoRamWrite, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].al3_read_addr_trig) }, // load the addr of the rx-fifo which will have the data to be written to RAM into the read register of MEMORY_ACCESSOR_DMA and trigger it's transfer
+  { NULL, NULL}
+};
 
 /* clang-format on */
+
+static volatile void *_lowerRomReadCommands = &LOWER_ROM_READ[0];
+static volatile void *_ramReadCommands = &RAM_READ[0];
+static volatile void *_ramWriteCommands = &RAM_WRITE[0];
 
 static void setup_read_dma_method2(PIO pio, unsigned sm, PIO pio_write_data,
                                    unsigned sm_write_data,
@@ -311,4 +348,71 @@ static void setup_read_dma_method2(PIO pio, unsigned sm, PIO pio_write_data,
       false);
   // channel_config_set_chain_to(&cfg, dma2);
   dma_channel_set_config(dma3, &cfg, false);
+}
+
+void __no_inline_not_in_flash_func(GbDma_EnableSaveRam)() {
+  _ramReadCommands = &RAM_READ[0];
+  _ramWriteCommands = &RAM_WRITE[0];
+}
+
+void __no_inline_not_in_flash_func(GbDma_DisableSaveRam)() {
+  _ramReadCommands = &RAM_DUMMY_READ[0];
+  _ramWriteCommands = &RAM_DUMMY_WRITE[0];
+}
+
+void __no_inline_not_in_flash_func(GbDma_EnableRtcRegister)(uint8_t reg) {
+  _ramReadCommands = &RTC_READ[0];
+  _ramWriteCommands = &RTC_WRITE[0];
+
+  if (reg == 0x8) {
+    _rtcLatchPtr = &g_rtcLatched.seconds;
+    _rtcRealPtr = &g_rtcReal.seconds;
+  }
+
+  if (reg == 0x9) {
+    _rtcLatchPtr = &g_rtcLatched.minutes;
+    _rtcRealPtr = &g_rtcReal.minutes;
+  }
+
+  if (reg == 0xA) {
+    _rtcLatchPtr = &g_rtcLatched.hours;
+    _rtcRealPtr = &g_rtcReal.hours;
+  }
+
+  if (reg == 0xB) {
+    _rtcLatchPtr = &g_rtcLatched.days;
+    _rtcRealPtr = &g_rtcReal.days;
+  }
+
+  if (reg == 0xC) {
+    _rtcLatchPtr = &g_rtcLatched.status.asByte;
+    _rtcRealPtr = &g_rtcReal.status.asByte;
+  }
+
+  // wtf: why is the switch-case not working?
+
+  // switch (reg) {
+  // case 0:
+  //   _rtcLatchPtr = &g_rtcLatched.seconds;
+  //   _rtcRealPtr = &g_rtcReal.seconds;
+  //   break;
+  // case 1:
+  //   _rtcLatchPtr = &g_rtcLatched.minutes;
+  //   _rtcRealPtr = &g_rtcReal.minutes;
+  //   break;
+  // case 2:
+  //   _rtcLatchPtr = &g_rtcLatched.hours;
+  //   _rtcRealPtr = &g_rtcReal.hours;
+  //   break;
+  // case 3:
+  //   _rtcLatchPtr = &g_rtcLatched.days;
+  //   _rtcRealPtr = &g_rtcReal.days;
+  //   break;
+  // case 4:
+  //   _rtcLatchPtr = &g_rtcLatched.status.asByte;
+  //   _rtcRealPtr = &g_rtcReal.status.asByte;
+  //   break;
+  // default:
+  //   break;
+  // }
 }

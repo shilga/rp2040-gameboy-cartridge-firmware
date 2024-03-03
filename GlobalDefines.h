@@ -79,6 +79,25 @@ void loadDoubleSpeedPio();
 void storeSaveRamInFile(const struct RomInfo *shortRomInfo);
 void restoreSaveRamFromFile(const struct RomInfo *shortRomInfo);
 
+struct __attribute__((packed)) GbRtc {
+  uint8_t seconds;
+  uint8_t minutes;
+  uint8_t hours;
+  uint8_t days;
+  union {
+    struct {
+      uint8_t days_carry : 1;
+      uint8_t reserved : 5;
+      uint8_t halt : 1;
+      uint8_t days_high : 1;
+    };
+    uint8_t asByte;
+  } status;
+};
+
+extern volatile struct GbRtc g_rtcReal;
+extern volatile struct GbRtc g_rtcLatched;
+
 /* taken from
  * https://github.com/tihmstar/libgeneral/blob/master/include/libgeneral/macros.h.in
  */

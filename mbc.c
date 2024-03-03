@@ -40,6 +40,7 @@
 static bool _ramDirty = false;
 static uint16_t _numRomBanks = 0;
 static uint8_t _numRamBanks = 0;
+static bool _hasRtc = false;
 static uint8_t _vBlankMode = 0;
 static uint8_t *_bankWithVBlankOverride = &memory[2 * GB_ROM_BANK_SIZE];
 
@@ -76,6 +77,7 @@ void loadGame(uint8_t mode) {
     break;
   case 0x0F:
   case 0x10:
+    _hasRtc = true;
   case 0x11:
   case 0x12:
   case 0x13:
@@ -116,6 +118,8 @@ void loadGame(uint8_t mode) {
   }
 
   ws2812b_setRgb(0, 0, 0);
+
+  ram_base = ram_memory;
 
   memcpy(memory, g_loadedRomBanks[0], GB_ROM_BANK_SIZE);
   if (_vBlankMode) {
@@ -293,13 +297,14 @@ void __no_inline_not_in_flash_func(runMbc1Game)() {
 void __no_inline_not_in_flash_func(runMbc3Game)() {
   uint8_t rom_bank = 1;
   uint8_t rom_bank_new = 1;
-  uint8_t ram_bank = GB_MAX_RAM_BANKS;
+  uint8_t ram_bank = 0;
   uint8_t ram_bank_new = 0;
-  uint8_t ram_bank_local = GB_MAX_RAM_BANKS;
   bool ram_enabled = 0;
   bool new_ram_enabled = 0;
   uint16_t rom_banks_mask = _numRomBanks - 1;
   uint16_t speedSwitchBank = 1U;
+  uint64_t now, lastSecond = time_us_64();
+  bool rtcLatch = false;
 
   rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[1];
 
@@ -310,7 +315,10 @@ void __no_inline_not_in_flash_func(runMbc3Game)() {
   memcpy(&memory[GB_ROM_BANK_SIZE], g_loadedRomBanks[speedSwitchBank],
          GB_ROM_BANK_SIZE);
 
+  GbDma_DisableSaveRam(); // todo: should be disabled in general
+
   printf("MBC3 game loaded\n");
+  printf("has RTC: %d\n", _hasRtc);
   printf("initial bank %d a %p\n", rom_bank, g_loadedRomBanks[1]);
   printf("speedSwitchBank %d\n", speedSwitchBank);
 
@@ -343,15 +351,24 @@ void __no_inline_not_in_flash_func(runMbc3Game)() {
           break;
 
         case 0x4000:
-          ram_bank_new = data & 0x03;
+          ram_bank_new = data;
           break;
 
         case 0x6000:
-
+          ws2812b_setRgb(0x10, 0x10, 0x10);
+          if (data) {
+            if (!rtcLatch) {
+              rtcLatch = true;
+              memcpy((void *)&g_rtcLatched, (void *)&g_rtcReal,
+                     sizeof(struct GbRtc));
+            }
+          } else {
+            rtcLatch = false;
+          }
           break;
         case 0xA000: // write to RAM
           if (!_ramDirty) {
-            ws2812b_setRgb(0x10, 0, 0); // switch on LED to red
+            // ws2812b_setRgb(0x10, 0, 0); // switch on LED to red
             _ramDirty = true;
           }
           break;
@@ -369,19 +386,59 @@ void __no_inline_not_in_flash_func(runMbc3Game)() {
 
         if (ram_enabled != new_ram_enabled) {
           ram_enabled = new_ram_enabled;
+          if (ram_enabled) {
+            if (ram_bank & 0x08) {
+              GbDma_EnableRtcRegister(ram_bank);
+              ws2812b_setRgb(0, 0x10, 0x10);
+            } else {
+              GbDma_EnableSaveRam();
+              // ws2812b_setRgb(0, 0, 0x10);
+            }
+          } else {
+            GbDma_DisableSaveRam();
+          }
         }
 
-        ram_bank_local = ram_enabled ? ram_bank_new : GB_MAX_RAM_BANKS;
-
-        if (ram_bank != ram_bank_local) {
-          ram_bank = ram_bank_local;
-          ram_base = &ram_memory[ram_bank * GB_RAM_BANK_SIZE];
+        if (ram_bank != ram_bank_new) {
+          ram_bank = ram_bank_new;
+          if (ram_bank & 0x08) {
+            if (ram_enabled) {
+              GbDma_EnableRtcRegister(ram_bank);
+              ws2812b_setRgb(0, 0x10, 0x10);
+            }
+          } else {
+            ram_base = &ram_memory[(ram_bank & 0x03) * GB_RAM_BANK_SIZE];
+          }
         }
       } else { // read
         if (_vBlankMode) {
           process_vblank_hook(addr);
         }
         detect_speed_change(addr, rom_bank == speedSwitchBank);
+      }
+    }
+
+    now = time_us_64();
+    if ((now - lastSecond) > 1000000U) {
+      lastSecond = now;
+
+      if (!g_rtcReal.status.halt) {
+        g_rtcReal.seconds++;
+
+        if (g_rtcReal.seconds >= 60) {
+          g_rtcReal.seconds = 0;
+          g_rtcReal.minutes++;
+
+          if (g_rtcReal.minutes >= 60) {
+            g_rtcReal.minutes = 0;
+            g_rtcReal.hours++;
+          }
+
+          if (g_rtcReal.hours >= 24) {
+            g_rtcReal.hours = 0;
+            g_rtcReal.days++;
+          }
+        }
       }
     }
   }

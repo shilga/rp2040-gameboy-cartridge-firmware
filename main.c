@@ -70,6 +70,9 @@ uint8_t __attribute__((section(".noinit_gb_ram.")))
 ram_memory[(GB_MAX_RAM_BANKS + 1) * GB_RAM_BANK_SIZE]
     __attribute__((aligned(GB_RAM_BANK_SIZE)));
 
+volatile struct GbRtc __attribute__((section(".noinit."))) g_rtcReal;
+volatile struct GbRtc __attribute__((section(".noinit."))) g_rtcLatched;
+
 uint8_t g_numRoms = 0;
 const uint8_t *g_loadedRomBanks[MAX_BANKS_PER_ROM];
 uint32_t g_loadedDirectAccessRomBanks[MAX_BANKS_PER_ROM];
@@ -138,6 +141,9 @@ int main() {
   ws2812b_spi_init(spi1);
   gpio_set_function(WS2812_PIN, GPIO_FUNC_SPI);
   ws2812b_setRgb(0, 0, 0);
+
+  memset((void *)&g_rtcLatched, 0, sizeof(g_rtcLatched));
+  memset((void *)&g_rtcReal, 0, sizeof(g_rtcLatched));
 
   // Load the gameboy_bus programs into it's respective PIOs
   _offset_main = pio_add_program(pio1, &gameboy_bus_program);
