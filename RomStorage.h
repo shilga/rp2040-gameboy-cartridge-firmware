@@ -24,6 +24,8 @@
 
 int RomStorage_init(lfs_t *lfs);
 
+int RomStorage_loadShortRomInfo(uint32_t game, struct ShortRomInfo *outShortRomInfo);
+
 int RomStorage_StartNewRomTransfer(uint16_t num_banks, uint16_t speedSwitchBank,
                                    const char *name);
 

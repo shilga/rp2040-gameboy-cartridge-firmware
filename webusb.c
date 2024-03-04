@@ -73,7 +73,7 @@ void webserial_task(void) {
       uint8_t buf[1];
       uint32_t count = tud_vendor_read(buf, sizeof(buf));
       if (count) {
-        printf("webserial: 0x%x\n", buf[0]);
+        // printf("webserial: 0x%x\n", buf[0]);
 
         handle_command(buf[0]);
       }
@@ -294,8 +294,13 @@ static int handle_request_rom_info_command(uint8_t buff[63]) {
     return -1;
   }
 
-  memcpy(buff, &g_shortRomInfos[requestedRom].name, 17);
-  buff[17] = g_shortRomInfos[requestedRom].numRamBanks;
+  {
+    struct ShortRomInfo sRI = {};
+    if (RomStorage_loadShortRomInfo(requestedRom,&sRI)) 
+      return -1;
+    memcpy(buff, &sRI.name, 17);
+    buff[17] = sRI.numRamBanks;
+  }
 
   return 18;
 }

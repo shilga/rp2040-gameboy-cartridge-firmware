@@ -75,7 +75,6 @@ static char _fileNameBuffer[25] = "/roms/";
 static char _filenamebufferSaves[40] = "saves/";
 
 static size_t _ramBytesTransferred = 0;
-static uint8_t _ramTransferCurrentRom = 0xFFU;
 
 static bool _romTransferActive = false;
 static bool _ramTransferActive = false;
@@ -107,48 +106,38 @@ static int readRomInfoFile(lfs_file_t *file) {
 }
 
 int RomStorage_init(lfs_t *lfs) {
+  int err = 0;
+  //
+  lfs_dir_t dir = {};
+  lfs_file_t file = {};
+  struct lfs_info lfsInfo = {};
+  //
   int lfs_err = 0;
+
   _lfs = lfs;
-  lfs_dir_t dir;
-  lfs_file_t file;
-  struct lfs_info lfsInfo;
-  const uint8_t *firstBankPointer;
 
   memset(_usedBanksFlags, 0, sizeof(_usedBanksFlags));
-  memset(g_shortRomInfos, 0, sizeof(g_shortRomInfos));
   g_numRoms = 0;
   _usedBanks = 0;
 
   lfs_err = lfs_mkdir(_lfs, "/roms");
-  if ((lfs_err != LFS_ERR_OK) && (lfs_err != LFS_ERR_EXIST)) {
-    printf("Error creating roms directory %d\n", lfs_err);
-    return -1;
-  }
+  cretassure((lfs_err == LFS_ERR_OK) || (lfs_err == LFS_ERR_EXIST),"Error creating roms directory %d\n", lfs_err);
 
   lfs_err = lfs_dir_open(_lfs, &dir, "/roms");
-  if (lfs_err != LFS_ERR_OK) {
-    return -1;
-  }
+  cassure(lfs_err == LFS_ERR_OK);
 
   lfs_err = lfs_dir_read(_lfs, &dir, &lfsInfo);
   while (lfs_err > 0) {
-    memcpy(&_fileNameBuffer[6], lfsInfo.name, 17);
-    printf("Reading %s\n", _fileNameBuffer);
-
     if (lfsInfo.type == LFS_TYPE_REG) {
-      lfs_err = lfs_file_opencfg(_lfs, &file, _fileNameBuffer, LFS_O_RDONLY,
-                                 &_fileconfig);
-      if (lfs_err != LFS_ERR_OK) {
-        printf("Error opening file %d\n", lfs_err);
-        return -1;
-      }
+      char filename[32];
+      snprintf(filename,sizeof(filename),"/roms/%s",lfsInfo.name);
+      printf("Reading %s\n", filename);
+      lfs_err = lfs_file_opencfg(_lfs, &file, filename, LFS_O_RDONLY, &_fileconfig);
+      cretassure(lfs_err == LFS_ERR_OK,"Error opening file %d\n", lfs_err);
 
       lfs_err = readRomInfoFile(&file);
-
       lfs_file_close(_lfs, &file);
-      if (lfs_err != LFS_ERR_OK) {
-        return -1;
-      }
+      cassure(lfs_err == LFS_ERR_OK);
 
       for (size_t i = 0; i < _romInfoFile.numBanks; i++) {
         SetBit(_usedBanksFlags, _romInfoFile.banks[i]);
@@ -156,14 +145,6 @@ int RomStorage_init(lfs_t *lfs) {
       }
 
       printf("Added %d used banks\n", _romInfoFile.numBanks);
-
-      memcpy(g_shortRomInfos[g_numRoms].name, lfsInfo.name, 16);
-      g_shortRomInfos[g_numRoms].name[16] = 0;
-      firstBankPointer = RomBankToPointer(_romInfoFile.banks[0]);
-      g_shortRomInfos[g_numRoms].firstBank = firstBankPointer;
-      g_shortRomInfos[g_numRoms].numRamBanks =
-          GameBoyHeader_readRamBankCount(firstBankPointer);
-      g_shortRomInfos[g_numRoms].speedSwitchBank = _romInfoFile.speedSwitchBank;
       g_numRoms++;
     }
 
@@ -172,12 +153,54 @@ int RomStorage_init(lfs_t *lfs) {
 
   printf("%d banks of 888 in use\n", _usedBanks);
 
-  lfs_err = lfs_dir_close(_lfs, &dir);
-  if (lfs_err != LFS_ERR_OK) {
-    return -1;
-  }
+error:
+  lfs_dir_close(_lfs, &dir);
+  return err;
+}
 
-  return 0;
+int RomStorage_loadShortRomInfo(uint32_t game, struct ShortRomInfo *outShortRomInfo){
+  int err = 0;
+  //
+  lfs_dir_t dir = {};
+  lfs_file_t file = {};
+  struct lfs_info lfsInfo = {};
+  //
+  int lfs_err = 0;
+
+  cassure(game < g_numRoms);
+
+  lfs_err = lfs_dir_open(_lfs, &dir, "/roms");
+  cassure(lfs_err == LFS_ERR_OK);
+
+  lfs_err = lfs_dir_read(_lfs, &dir, &lfsInfo);
+  while (lfs_err > 0) {
+    if (lfsInfo.type == LFS_TYPE_REG && game-- == 0) {
+      char filename[32];
+      snprintf(filename,sizeof(filename),"/roms/%s",lfsInfo.name);
+      printf("RomStorage_loadShortRomInfo %s\n", filename);
+      lfs_err = lfs_file_opencfg(_lfs, &file, filename, LFS_O_RDONLY, &_fileconfig);
+      cretassure(lfs_err == LFS_ERR_OK,"Error opening file %d\n", lfs_err);
+
+      lfs_err = readRomInfoFile(&file);
+
+      lfs_file_close(_lfs, &file);
+      cassure(lfs_err == LFS_ERR_OK);
+
+      memcpy(outShortRomInfo->name, lfsInfo.name, 16);
+      outShortRomInfo->name[16] = 0;
+      outShortRomInfo->firstBank = RomBankToPointer(_romInfoFile.banks[0]);
+      outShortRomInfo->numRamBanks = GameBoyHeader_readRamBankCount(outShortRomInfo->firstBank);
+      outShortRomInfo->speedSwitchBank = _romInfoFile.speedSwitchBank;
+      goto success;
+    }
+
+    lfs_err = lfs_dir_read(_lfs, &dir, &lfsInfo);
+  }
+  creterror("Failed to find game %d\n");
+success:
+error:
+  lfs_dir_close(_lfs, &dir);
+  return err;
 }
 
 int RomStorage_StartNewRomTransfer(uint16_t num_banks, uint16_t speedSwitchBank,
@@ -186,11 +209,6 @@ int RomStorage_StartNewRomTransfer(uint16_t num_banks, uint16_t speedSwitchBank,
   size_t current_search_bank = 0;
   struct lfs_info lfsInfo;
   int lfs_err;
-
-  if ((g_numRoms + 1) > MAX_ALLOWED_ROMS) {
-    printf("That is more ROMs as can be handled\n");
-    return -1;
-  }
 
   if ((num_banks + _usedBanks) > MAX_BANKS) {
     printf("Not enough free banks for new ROM\n");
@@ -336,14 +354,20 @@ int RomStorage_TransferRomChunk(uint16_t bank, uint16_t chunk,
 uint16_t RomStorage_GetNumUsedBanks() { return _usedBanks; }
 
 int RomStorage_DeleteRom(uint8_t rom) {
-  int lfs_err;
-
+  int err = 0;
+  int lfs_err = 0;
+  //
+  //
+  struct ShortRomInfo sRI = {};
+  
   if (rom >= g_numRoms) {
     return -1;
   }
 
-  memcpy(&_fileNameBuffer[6], g_shortRomInfos[rom].name, 17);
-  memcpy(&_filenamebufferSaves[6], g_shortRomInfos[rom].name, 17);
+  cassure(!RomStorage_loadShortRomInfo(rom, &sRI));
+
+  memcpy(&_fileNameBuffer[6], sRI.name, 17);
+  memcpy(&_filenamebufferSaves[6], sRI.name, 17);
 
   printf("Deleting ROM %d, %s\n", rom, _fileNameBuffer);
   printf("Deleting savegame %s\n", _filenamebufferSaves);
@@ -354,17 +378,15 @@ int RomStorage_DeleteRom(uint8_t rom) {
   }
 
   lfs_err = lfs_remove(_lfs, _fileNameBuffer);
-  if (lfs_err < 0) {
-    printf("Error deleting ROM file %d\n", lfs_err);
-    return -1;
-  }
+  cretassure(lfs_err >= 0, "Error deleting ROM file %d\n", lfs_err);
 
-  RomStorage_init(_lfs); // reinit to reload ROM info
-
-  return 0;
+error:
+  err = RomStorage_init(_lfs); // reinit to reload ROM info
+  return err;
 }
 
 int RomStorage_StartRamDownload(uint8_t rom) {
+  int err = 0;
   int lfs_err;
 
   if (_romTransferActive) {
@@ -379,28 +401,26 @@ int RomStorage_StartRamDownload(uint8_t rom) {
     return -3;
   }
 
-  if (g_shortRomInfos[rom].numRamBanks == 0) {
+  cassure(!RomStorage_loadShortRomInfo(rom, &g_loadedShortRomInfo));  
+
+  if (g_loadedShortRomInfo.numRamBanks == 0) {
     return -3;
   }
 
   _ramTransferActive = true;
-  _ramTransferCurrentRom = rom;
 
-  memcpy(&_filenamebufferSaves[6], g_shortRomInfos[rom].name, 17);
+  memcpy(&_filenamebufferSaves[6], g_loadedShortRomInfo.name, 17);
 
   printf("Loading savefile %d, %s\n", rom, _filenamebufferSaves);
 
-  lfs_err = lfs_file_opencfg(_lfs, &_ramTransferFile, _filenamebufferSaves,
-                             LFS_O_RDONLY, &_fileconfig);
+  lfs_err = lfs_file_opencfg(_lfs, &_ramTransferFile, _filenamebufferSaves, LFS_O_RDONLY, &_fileconfig);
 
-  if (lfs_err != LFS_ERR_OK) {
-    printf("Error opening file %d\n", lfs_err);
-    return -4;
-  }
+  cretassure(lfs_err == LFS_ERR_OK,"Error opening file %d\n", lfs_err);
 
   _ramBytesTransferred = 0;
 
-  return 0;
+error:
+  return err;
 }
 
 int RomStorage_GetRamDownloadChunk(uint8_t data[32], uint16_t *bank,
@@ -419,14 +439,12 @@ int RomStorage_GetRamDownloadChunk(uint8_t data[32], uint16_t *bank,
 
   _ramBytesTransferred += 32;
 
-  if (_ramBytesTransferred >=
-      g_shortRomInfos[_ramTransferCurrentRom].numRamBanks * GB_RAM_BANK_SIZE) {
+  if (_ramBytesTransferred >= g_loadedShortRomInfo.numRamBanks * GB_RAM_BANK_SIZE) {
     printf("RAM transfer finished\n");
 
     lfs_file_close(_lfs, &_ramTransferFile);
 
     _ramBytesTransferred = 0;
-    _ramTransferCurrentRom = 0xFFU;
     _ramTransferActive = false;
   }
 
@@ -434,6 +452,7 @@ int RomStorage_GetRamDownloadChunk(uint8_t data[32], uint16_t *bank,
 }
 
 int RomStorage_StartRamUpload(uint8_t rom) {
+  int err = 0;
   int lfs_err;
 
   if (_romTransferActive) {
@@ -448,28 +467,26 @@ int RomStorage_StartRamUpload(uint8_t rom) {
     return -3;
   }
 
-  if (g_shortRomInfos[rom].numRamBanks == 0) {
+  cassure(!RomStorage_loadShortRomInfo(rom, &g_loadedShortRomInfo));  
+
+  if (g_loadedShortRomInfo.numRamBanks == 0) {
     return -3;
   }
 
   _ramTransferActive = true;
-  _ramTransferCurrentRom = rom;
 
-  memcpy(&_filenamebufferSaves[6], g_shortRomInfos[rom].name, 17);
+  memcpy(&_filenamebufferSaves[6], g_loadedShortRomInfo.name, 17);
 
   printf("Opening savefile %d, %s\n", rom, _filenamebufferSaves);
 
-  lfs_err = lfs_file_opencfg(_lfs, &_ramTransferFile, _filenamebufferSaves,
-                             LFS_O_WRONLY | LFS_O_CREAT, &_fileconfig);
+  lfs_err = lfs_file_opencfg(_lfs, &_ramTransferFile, _filenamebufferSaves, LFS_O_WRONLY | LFS_O_CREAT, &_fileconfig);
 
-  if (lfs_err != LFS_ERR_OK) {
-    printf("Error opening file %d\n", lfs_err);
-    return -4;
-  }
+  cretassure(lfs_err == LFS_ERR_OK,"Error opening file %d\n", lfs_err);
 
   _ramBytesTransferred = 0;
 
-  return 0;
+error:
+  return err;
 }
 
 int RomStorage_TransferRamUploadChunk(uint16_t bank, uint16_t chunk,
@@ -502,14 +519,12 @@ int RomStorage_TransferRamUploadChunk(uint16_t bank, uint16_t chunk,
 
   _ramBytesTransferred += 32;
 
-  if (_ramBytesTransferred >=
-      g_shortRomInfos[_ramTransferCurrentRom].numRamBanks * GB_RAM_BANK_SIZE) {
+  if (_ramBytesTransferred >= g_loadedShortRomInfo.numRamBanks * GB_RAM_BANK_SIZE) {
     printf("RAM transfer finished\n");
 
     lfs_file_close(_lfs, &_ramTransferFile);
 
     _ramBytesTransferred = 0;
-    _ramTransferCurrentRom = 0xFFU;
     _ramTransferActive = false;
   }
 
@@ -528,7 +543,9 @@ const int RomStorage_LoadRom(uint8_t rom) {
     return -2;
   }
 
-  memcpy(&_fileNameBuffer[6], g_shortRomInfos[rom].name, 17);
+  RomStorage_loadShortRomInfo(rom, &g_loadedShortRomInfo);
+
+  memcpy(&_fileNameBuffer[6], g_loadedShortRomInfo.name, 17);
 
   printf("Loading ROM %d, %s\n", rom, _fileNameBuffer);
 
