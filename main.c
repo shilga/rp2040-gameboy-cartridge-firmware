@@ -66,7 +66,7 @@ volatile uint32_t rom_high_base_flash_direct = 0;
 uint8_t memory[GB_ROM_BANK_SIZE * 3] __attribute__((aligned(GB_ROM_BANK_SIZE)));
 uint8_t memory_vblank_hook_bank[0x200] __attribute__((aligned(0x200)));
 uint8_t memory_vblank_hook_bank2[0x200] __attribute__((aligned(0x200)));
-uint8_t __attribute__((section(".noinit.")))
+uint8_t __attribute__((section(".noinit_gb_ram.")))
 ram_memory[(GB_MAX_RAM_BANKS + 1) * GB_RAM_BANK_SIZE]
     __attribute__((aligned(GB_RAM_BANK_SIZE)));
 
