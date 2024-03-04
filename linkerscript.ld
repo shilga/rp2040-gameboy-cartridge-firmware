@@ -26,8 +26,8 @@ MEMORY
     FLASH(rx) : ORIGIN = 0x10000000, LENGTH = 128k
     ROMSTORAGE(rx) : ORIGIN = 0x10020000, LENGTH = 14208k
     FILESYSTEM(rx) : ORIGIN = 0x10E00000, LENGTH = 2048k
-    RAM(rwx) : ORIGIN =  0x20000000, LENGTH = 96k
-    NOINIT(rwx) : ORIGIN =  0x20018000, LENGTH = 160k
+    RAM(rwx) : ORIGIN =  0x20000000, LENGTH = 120k
+    SAVERAM(rwx) : ORIGIN =  0x2001E000, LENGTH = 136k
     SCRATCH_X(rwx) : ORIGIN = 0x20040000, LENGTH = 4k
     SCRATCH_Y(rwx) : ORIGIN = 0x20041000, LENGTH = 4k
 }
@@ -177,15 +177,16 @@ SECTIONS
         __data_end__ = .;
     } > RAM AT> FLASH
 
-    .noinit (NOLOAD): {
-        . = ALIGN(4);
-        *(.noinit*)
-    } > NOINIT    
-
-    .uninitialized_data (COPY): {
+    .uninitialized_data (NOLOAD): {
         . = ALIGN(4);
         *(.uninitialized_data*)
+        *(.noinit.*)
     } > RAM
+
+    .noinit_gb_ram (NOLOAD): {
+        . = ALIGN(4);
+        *(.noinit_gb_ram.*)
+    } > SAVERAM 
 
     /* Start and end symbols must be word-aligned */
     .scratch_x : {
