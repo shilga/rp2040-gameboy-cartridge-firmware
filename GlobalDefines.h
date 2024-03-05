@@ -55,6 +55,9 @@ extern const volatile uint8_t *volatile ram_base;
 extern const volatile uint8_t *volatile rom_low_base;
 extern volatile uint32_t rom_high_base_flash_direct;
 
+extern volatile uint8_t *_rtcLatchPtr;
+extern volatile uint8_t *_rtcRealPtr;
+
 extern uint8_t memory[];
 extern uint8_t ram_memory[];
 extern uint8_t memory_vblank_hook_bank[];
@@ -94,9 +97,13 @@ struct __attribute__((packed)) GbRtc {
     uint8_t asByte;
   } status;
 };
+union GbRtcUnion {
+  struct GbRtc reg;
+  uint8_t asArray[5];
+};
 
-extern volatile struct GbRtc g_rtcReal;
-extern volatile struct GbRtc g_rtcLatched;
+extern volatile union GbRtcUnion g_rtcReal;
+extern volatile union GbRtcUnion g_rtcLatched;
 
 /* taken from
  * https://github.com/tihmstar/libgeneral/blob/master/include/libgeneral/macros.h.in

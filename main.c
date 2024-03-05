@@ -63,6 +63,9 @@ const volatile uint8_t *volatile ram_base = NULL;
 const volatile uint8_t *volatile rom_low_base = NULL;
 volatile uint32_t rom_high_base_flash_direct = 0;
 
+volatile uint8_t *_rtcLatchPtr = &g_rtcLatched.reg.seconds;
+volatile uint8_t *_rtcRealPtr = &g_rtcReal.reg.seconds;
+
 uint8_t memory[GB_ROM_BANK_SIZE * 3] __attribute__((aligned(GB_ROM_BANK_SIZE)));
 uint8_t memory_vblank_hook_bank[0x200] __attribute__((aligned(0x200)));
 uint8_t memory_vblank_hook_bank2[0x200] __attribute__((aligned(0x200)));
@@ -70,8 +73,8 @@ uint8_t __attribute__((section(".noinit_gb_ram.")))
 ram_memory[(GB_MAX_RAM_BANKS + 1) * GB_RAM_BANK_SIZE]
     __attribute__((aligned(GB_RAM_BANK_SIZE)));
 
-volatile struct GbRtc __attribute__((section(".noinit."))) g_rtcReal;
-volatile struct GbRtc __attribute__((section(".noinit."))) g_rtcLatched;
+volatile union GbRtcUnion __attribute__((section(".noinit."))) g_rtcReal;
+volatile union GbRtcUnion __attribute__((section(".noinit."))) g_rtcLatched;
 
 uint8_t g_numRoms = 0;
 const uint8_t *g_loadedRomBanks[MAX_BANKS_PER_ROM];

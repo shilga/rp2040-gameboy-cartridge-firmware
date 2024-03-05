@@ -17,6 +17,7 @@
 
 #include "mbc.h"
 #include "GbDma.h"
+#include "GbRtc.h"
 #include "GlobalDefines.h"
 #include "ws2812b_spi.h"
 
@@ -367,9 +368,13 @@ void __no_inline_not_in_flash_func(runMbc3Game)() {
           }
           break;
         case 0xA000: // write to RAM
-          if (!_ramDirty) {
-            // ws2812b_setRgb(0x10, 0, 0); // switch on LED to red
-            _ramDirty = true;
+          if (ram_enabled) {
+            if (ram_bank & 0x08) {
+              GbRtc_WriteRegister(data);
+            } else if (!_ramDirty) {
+              // ws2812b_setRgb(0x10, 0, 0); // switch on LED to red
+              _ramDirty = true;
+            }
           }
           break;
         default:
@@ -388,7 +393,7 @@ void __no_inline_not_in_flash_func(runMbc3Game)() {
           ram_enabled = new_ram_enabled;
           if (ram_enabled) {
             if (ram_bank & 0x08) {
-              GbDma_EnableRtcRegister(ram_bank);
+              GbDma_EnableRtc();
               ws2812b_setRgb(0, 0x10, 0x10);
             } else {
               GbDma_EnableSaveRam();
@@ -402,8 +407,9 @@ void __no_inline_not_in_flash_func(runMbc3Game)() {
         if (ram_bank != ram_bank_new) {
           ram_bank = ram_bank_new;
           if (ram_bank & 0x08) {
+            GbRtc_ActivateRegister(ram_bank & 0x07);
             if (ram_enabled) {
-              GbDma_EnableRtcRegister(ram_bank);
+              GbDma_EnableRtc();
               ws2812b_setRgb(0, 0x10, 0x10);
             }
           } else {
@@ -418,30 +424,8 @@ void __no_inline_not_in_flash_func(runMbc3Game)() {
       }
     }
 
-    now = time_us_64();
-    if ((now - lastSecond) > 1000000U) {
-      lastSecond = now;
-
-      if (!g_rtcReal.status.halt) {
-        g_rtcReal.seconds++;
-
-        if (g_rtcReal.seconds >= 60) {
-          g_rtcReal.seconds = 0;
-          g_rtcReal.minutes++;
-
-          if (g_rtcReal.minutes >= 60) {
-            g_rtcReal.minutes = 0;
-            g_rtcReal.hours++;
-          }
-
-          if (g_rtcReal.hours >= 24) {
-            g_rtcReal.hours = 0;
-            g_rtcReal.days++;
-          }
-        }
-      }
-    }
-  }
+    GbRtc_PerformRtcTick();
+  } // endless loop
 }
 
 void __no_inline_not_in_flash_func(runMbc5Game)() {

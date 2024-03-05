@@ -50,9 +50,6 @@ volatile io_ro_32 *_rxFifoRamWrite = &(pio1->rxf[SMC_GB_RAM_WRITE]);
 volatile uint32_t _devNull;
 volatile uint32_t *_devNullPtr = &_devNull;
 
-volatile uint8_t *_rtcLatchPtr = &g_rtcLatched.seconds;
-volatile uint8_t *_rtcRealPtr = &g_rtcReal.seconds;
-
 struct DmaCommand {
   const volatile void *read_addr;
   volatile void *write_addr;
@@ -360,59 +357,7 @@ void __no_inline_not_in_flash_func(GbDma_DisableSaveRam)() {
   _ramWriteCommands = &RAM_DUMMY_WRITE[0];
 }
 
-void __no_inline_not_in_flash_func(GbDma_EnableRtcRegister)(uint8_t reg) {
+void __no_inline_not_in_flash_func(GbDma_EnableRtc)() {
   _ramReadCommands = &RTC_READ[0];
-  _ramWriteCommands = &RTC_WRITE[0];
-
-  if (reg == 0x8) {
-    _rtcLatchPtr = &g_rtcLatched.seconds;
-    _rtcRealPtr = &g_rtcReal.seconds;
-  }
-
-  if (reg == 0x9) {
-    _rtcLatchPtr = &g_rtcLatched.minutes;
-    _rtcRealPtr = &g_rtcReal.minutes;
-  }
-
-  if (reg == 0xA) {
-    _rtcLatchPtr = &g_rtcLatched.hours;
-    _rtcRealPtr = &g_rtcReal.hours;
-  }
-
-  if (reg == 0xB) {
-    _rtcLatchPtr = &g_rtcLatched.days;
-    _rtcRealPtr = &g_rtcReal.days;
-  }
-
-  if (reg == 0xC) {
-    _rtcLatchPtr = &g_rtcLatched.status.asByte;
-    _rtcRealPtr = &g_rtcReal.status.asByte;
-  }
-
-  // wtf: why is the switch-case not working?
-
-  // switch (reg) {
-  // case 0:
-  //   _rtcLatchPtr = &g_rtcLatched.seconds;
-  //   _rtcRealPtr = &g_rtcReal.seconds;
-  //   break;
-  // case 1:
-  //   _rtcLatchPtr = &g_rtcLatched.minutes;
-  //   _rtcRealPtr = &g_rtcReal.minutes;
-  //   break;
-  // case 2:
-  //   _rtcLatchPtr = &g_rtcLatched.hours;
-  //   _rtcRealPtr = &g_rtcReal.hours;
-  //   break;
-  // case 3:
-  //   _rtcLatchPtr = &g_rtcLatched.days;
-  //   _rtcRealPtr = &g_rtcReal.days;
-  //   break;
-  // case 4:
-  //   _rtcLatchPtr = &g_rtcLatched.status.asByte;
-  //   _rtcRealPtr = &g_rtcReal.status.asByte;
-  //   break;
-  // default:
-  //   break;
-  // }
+  _ramWriteCommands = &RAM_DUMMY_WRITE[0]; // write needs special handling
 }

@@ -37,6 +37,7 @@ add_subdirectory(libs/git-commit-tracking)
 add_executable(${PROJECT_NAME} 
     main.c
     GbDma.c
+    GbRtc.c
     mbc.c
     webusb.c
     usb_descriptors.c
