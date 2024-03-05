@@ -53,10 +53,10 @@ extern uint8_t memory_vblank_hook_bank[];
 extern uint8_t memory_vblank_hook_bank2[];
 
 struct ShortRomInfo {
-  char name[17];
   const uint8_t *firstBank;
-  uint8_t numRamBanks;
   uint16_t speedSwitchBank;
+  uint8_t numRamBanks;
+  char name[17];
 };
 
 extern uint8_t g_numRoms;

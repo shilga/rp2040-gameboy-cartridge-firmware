@@ -99,7 +99,7 @@ int main() {
     sleep_ms(2);
   }
 
-  stdio_uart_init_full(uart0, 1000000, 28, -1);
+  stdio_uart_init_full(uart0, 500000, 28, -1);
 
   printf("Hello RP2040 Croco Cartridge %d.%d.%d %s-%.7X(%s)\n",
          RP2040_GB_CARTRIDGE_VERSION_MAJOR, RP2040_GB_CARTRIDGE_VERSION_MINOR,
@@ -255,7 +255,7 @@ struct __attribute__((packed)) SharedGameboyData {
   uint8_t versionMinor;
   uint8_t versionPatch;
   uint8_t number_of_roms;
-  uint8_t rom_names;
+  char rom_names[];
 };
 
 void __no_inline_not_in_flash_func(runGbBootloader)(uint8_t *selectedGame,
@@ -278,11 +278,14 @@ void __no_inline_not_in_flash_func(runGbBootloader)(uint8_t *selectedGame,
   shared_data->versionPatch = RP2040_GB_CARTRIDGE_VERSION_PATCH;
 
   // initialize RAM with information about roms
-  uint8_t *pRomNames = &shared_data->rom_names;
-  for (size_t i = 0; i < g_numRoms; i++) {
-    struct ShortRomInfo sRI = {};
-    RomStorage_loadShortRomInfo(i, &sRI);
-    memcpy(&pRomNames[i * 16], &sRI.name, 16);
+  {
+    char *pRomNames = shared_data->rom_names;
+    for (size_t i = 0; i < g_numRoms; i++) {
+      struct ShortRomInfo sRI = {};
+      RomStorage_loadShortRomInfo(i, &sRI);
+      strcpy(pRomNames, sRI.name);
+      pRomNames += strlen(pRomNames)+1;
+    }
   }
   shared_data->number_of_roms = g_numRoms;
   ram[0x1001] = 0xFF;
