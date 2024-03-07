@@ -364,13 +364,13 @@ void main(void) {
     set_bkg_palette(0, 2, &backgroundpalette[0]);
   }
 
-  set_bkg_data(100, 70, giraffe_4color_data);
-
   font_init();  
   font_t curFont = font_load(font_ibm);
   font_set(curFont);
 
   mode(M_TEXT_OUT | M_NO_SCROLL);
+
+  set_bkg_data(100, 70, giraffe_4color_data);
 
   DISPLAY_ON;
 
