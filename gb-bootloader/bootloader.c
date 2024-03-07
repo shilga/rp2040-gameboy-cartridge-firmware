@@ -8,11 +8,18 @@
 #include <gb/gb.h>
 #include <gbdk/console.h>
 #include <gbdk/font.h>
+#include <gbdk/platform.h>
 
 #include "giraffe_4color_data.c"
 #include "giraffe_4color_map.c"
 
 #pragma mark defines
+
+#ifdef DMG_TEST_MODE_ON_CBG
+# define DEVICE_SUPPORTS_COLOR (0)
+#else
+# define DEVICE_SUPPORTS_COLOR (_cpu == CGB_TYPE)
+#endif //DMG_TEST_MODE_ON_CBG
 
 #define MENU_GAME_MENU 1
 #define MENU_SYSTEM_INFO 2
@@ -56,6 +63,8 @@ static uint8_t gCursor = 0;
 static uint8_t gPageCursor = 0;
 static uint8_t gLastSelectedGame = 0;
 static uint8_t gLastSelectedGamePage = 0;
+
+static uint8_t gDMGHighlightLine = 0xFF;
 
 
 #pragma mark shared mem globals
@@ -101,13 +110,21 @@ uint8_t buttonPressed(uint8_t input, uint8_t key) {
 #pragma mark screen functions
 void resetAttributes(void){
   static uint8_t attrs[CHARS_PER_ROW*MAX_GAMES_RENDER_NUM] = {};
-  set_bkg_attributes(0, 1, CHARS_PER_ROW, MAX_GAMES_RENDER_NUM, attrs);
+  if (DEVICE_SUPPORTS_COLOR) {
+    set_bkg_attributes(0, 1, CHARS_PER_ROW, MAX_GAMES_RENDER_NUM, attrs);
+  }else{
+    gDMGHighlightLine = 0xFF;
+  }
 }
 
 void highlightLine(uint8_t idx){
 #define ATTR 1
   static uint8_t attrs[CHARS_PER_ROW] = {ATTR,ATTR,ATTR,ATTR,ATTR,ATTR,ATTR,ATTR,ATTR,ATTR,ATTR,ATTR,ATTR,ATTR,ATTR,ATTR,ATTR,ATTR,ATTR,ATTR};
-  set_bkg_attributes(0, idx+gHighlightOffset, CHARS_PER_ROW, 1, attrs);
+  if (DEVICE_SUPPORTS_COLOR) {
+    set_bkg_attributes(0, idx+gHighlightOffset, CHARS_PER_ROW, 1, attrs);
+  }else{
+    gDMGHighlightLine = idx+gHighlightOffset;
+  }
 #undef ATTR
 }
 
@@ -354,14 +371,40 @@ void drawscreen(uint8_t input){
   }
 }
 
+#pragma mark interrupt handlers
+void scanline_isr(void) {
+#define blackPalette  DMG_PALETTE(DMG_BLACK, DMG_DARK_GRAY, DMG_LITE_GRAY, DMG_WHITE);
+#define normalPalette DMG_PALETTE(DMG_WHITE, DMG_DARK_GRAY, DMG_LITE_GRAY, DMG_BLACK);
+
+  if (gDMGHighlightLine != 0xFF){
+    if (((LY_REG+1)>>3) == gDMGHighlightLine){
+      BGP_REG = blackPalette;
+      LYC_REG = ((gDMGHighlightLine+1) << 3)-1;
+      return;
+    }else{
+      LYC_REG = (gDMGHighlightLine << 3)-1;
+    }
+  }
+  rBGP = normalPalette;
+#undef blackPalette
+#undef normalPalette
+}
+
 #pragma mark main
 void main(void) {
   ENABLE_RAM_MBC1;
 
   copySharedData();
 
-  if (_cpu == CGB_TYPE) {
+  if (DEVICE_SUPPORTS_COLOR) {
     set_bkg_palette(0, 2, &backgroundpalette[0]);
+  }else{
+    CRITICAL {
+      STAT_REG = STATF_LYC;
+      LYC_REG = 0;
+      add_LCD(scanline_isr);
+    }
+    set_interrupts(IE_REG | LCD_IFLAG);
   }
 
   font_init();  
