@@ -30,7 +30,7 @@ add_subdirectory(gb-bootloader)
 add_subdirectory(gb-vblankhook)
 
 add_subdirectory(libs/pico-littlefs)
-target_compile_definitions(littlefs-lib PUBLIC LFS_NO_MALLOC LFS_YES_TRACE)
+target_compile_definitions(littlefs-lib PUBLIC LFS_NO_MALLOC)
 
 add_subdirectory(libs/git-commit-tracking)
 
