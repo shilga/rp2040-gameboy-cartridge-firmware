@@ -125,16 +125,16 @@ void loadGame(uint8_t game, uint8_t mode) {
 
   switch (mbc) {
   case 0x00:
-    runNoMbcGame(game);
+    runNoMbcGame();
     break;
   case 0x01:
-    runMbc1Game(game, _numRomBanks, mode);
+    runMbc1Game();
     break;
   case 0x03:
-    runMbc3Game(game, _numRomBanks, mode);
+    runMbc3Game();
     break;
   case 0x05:
-    runMbc5Game(game, _numRomBanks, mode);
+    runMbc5Game();
     break;
   default:
     printf("Unsupported MBC!\n");
@@ -299,7 +299,7 @@ void __no_inline_not_in_flash_func(runMbc3Game)() {
   uint8_t ram_bank_local = GB_MAX_RAM_BANKS;
   bool ram_enabled = 0;
   bool new_ram_enabled = 0;
-  uint16_t rom_banks_mask = g_loadedShortRomInfo.numRamBanks - 1;
+  uint16_t rom_banks_mask = _numRomBanks - 1;
   uint16_t speedSwitchBank = 1U;
 
   rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[1];
