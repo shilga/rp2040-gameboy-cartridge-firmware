@@ -89,10 +89,10 @@ struct __attribute__((packed)) GbRtc {
   uint8_t days;
   union {
     struct {
-      uint8_t days_carry : 1;
+      uint8_t days_high : 1;
       uint8_t reserved : 5;
       uint8_t halt : 1;
-      uint8_t days_high : 1;
+      uint8_t days_carry : 1;
     };
     uint8_t asByte;
   } status;
