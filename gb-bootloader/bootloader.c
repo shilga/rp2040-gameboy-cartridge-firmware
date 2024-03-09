@@ -99,8 +99,13 @@ struct CfgRTCReal{
 };
 
 const palette_color_t backgroundpalette[] = {
-    RGB_WHITE, RGB_YELLOW, RGB_BROWN, RGB_BLACK,
-    RGB_BLACK, RGB_YELLOW, RGB_BROWN, RGB_WHITE,
+  RGB_BROWN, RGB_YELLOW, RGB_WHITE, RGB_BLACK,
+  RGB_BROWN, RGB_YELLOW, RGB_BLACK, RGB_WHITE,
+};
+
+const palette_color_t spritepalette[] = {
+  RGB_BROWN, RGB_YELLOW, RGB_GREEN, RGB_BLACK,
+  RGB_BROWN, RGB_YELLOW, RGB_GREEN, RGB_WHITE,
 };
 
 static uint8_t gCurrentInput = 0;
@@ -603,7 +608,8 @@ void main(void) {
 
   if (DEVICE_SUPPORTS_COLOR) {
     set_bkg_palette(0, 2, &backgroundpalette[0]);
-  } else {
+    set_sprite_palette(0, 2, &spritepalette[0]);
+  }else{
     CRITICAL {
       STAT_REG = STATF_LYC;
       LYC_REG = 0;
