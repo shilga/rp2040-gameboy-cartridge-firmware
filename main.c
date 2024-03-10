@@ -70,13 +70,14 @@ uint8_t __attribute__((section(".noinit_gb_ram.")))
 ram_memory[(GB_MAX_RAM_BANKS + 1) * GB_RAM_BANK_SIZE]
     __attribute__((aligned(GB_RAM_BANK_SIZE)));
 
-struct ShortRomInfo g_shortRomInfos[MAX_ALLOWED_ROMS];
 uint8_t g_numRoms = 0;
 const uint8_t *g_loadedRomBanks[MAX_BANKS_PER_ROM];
 uint32_t g_loadedDirectAccessRomBanks[MAX_BANKS_PER_ROM];
 
-uint32_t __attribute__((section(".noinit."))) _noInitTest;
-uint32_t __attribute__((section(".noinit."))) _lastRunningGame;
+struct RomInfo __attribute__((section(".noinit."))) g_loadedRomInfo;
+
+static uint32_t __attribute__((section(".noinit."))) _noInitTest;
+static uint32_t __attribute__((section(".noinit."))) _lastRunningGame;
 
 static lfs_t _lfs = {};
 static uint8_t _lfsFileBuffer[LFS_CACHE_SIZE];
@@ -99,7 +100,7 @@ int main() {
     sleep_ms(2);
   }
 
-  stdio_uart_init_full(uart0, 1000000, 28, -1);
+  stdio_uart_init_full(uart0, 500000, 28, -1);
 
   printf("Hello RP2040 Croco Cartridge %d.%d.%d %s-%.7X(%s)\n",
          RP2040_GB_CARTRIDGE_VERSION_MAJOR, RP2040_GB_CARTRIDGE_VERSION_MINOR,
@@ -220,8 +221,8 @@ int main() {
   if (_lastRunningGame < g_numRoms) {
     printf("Game %d was running before reset\n", _lastRunningGame);
 
-    if (g_shortRomInfos[_lastRunningGame].numRamBanks > 0) {
-      storeSaveRamInFile(_lastRunningGame);
+    if (g_loadedRomInfo.numRamBanks > 0) {
+      storeSaveRamInFile(&g_loadedRomInfo);
 
       _lastRunningGame = 0xFF;
     }
@@ -255,7 +256,7 @@ struct __attribute__((packed)) SharedGameboyData {
   uint8_t versionMinor;
   uint8_t versionPatch;
   uint8_t number_of_roms;
-  uint8_t rom_names;
+  char rom_names[];
 };
 
 void __no_inline_not_in_flash_func(runGbBootloader)(uint8_t *selectedGame,
@@ -278,9 +279,14 @@ void __no_inline_not_in_flash_func(runGbBootloader)(uint8_t *selectedGame,
   shared_data->versionPatch = RP2040_GB_CARTRIDGE_VERSION_PATCH;
 
   // initialize RAM with information about roms
-  uint8_t *pRomNames = &shared_data->rom_names;
-  for (size_t i = 0; i < g_numRoms; i++) {
-    memcpy(&pRomNames[i * 16], &(g_shortRomInfos[i].name), 16);
+  {
+    char *pRomNames = shared_data->rom_names;
+    for (size_t i = 0; i < g_numRoms; i++) {
+      struct RomInfo romInfo = {};
+      RomStorage_loadRomInfo(i, &romInfo);
+      strcpy(pRomNames, romInfo.name);
+      pRomNames += strlen(pRomNames) + 1;
+    }
   }
   shared_data->number_of_roms = g_numRoms;
   ram[0x1001] = 0xFF;
@@ -418,12 +424,12 @@ __assert_fail(const char *expr, const char *file, unsigned int line,
     ;
 }
 
-void restoreSaveRamFromFile(uint32_t game) {
+void restoreSaveRamFromFile(const struct RomInfo *romInfo) {
   lfs_file_t file;
   struct lfs_file_config fileconfig = {.buffer = _lfsFileBuffer};
   char filenamebuffer[40] = "saves/";
 
-  strcpy(&filenamebuffer[strlen(filenamebuffer)], g_shortRomInfos[game].name);
+  strcpy(&filenamebuffer[strlen(filenamebuffer)], romInfo->name);
 
   int lfs_err =
       lfs_file_opencfg(&_lfs, &file, filenamebuffer, LFS_O_RDONLY, &fileconfig);
@@ -431,9 +437,8 @@ void restoreSaveRamFromFile(uint32_t game) {
   if (lfs_err == LFS_ERR_OK) {
     printf("found save at %s\n", filenamebuffer);
 
-    lfs_err =
-        lfs_file_read(&_lfs, &file, ram_memory,
-                      g_shortRomInfos[game].numRamBanks * GB_RAM_BANK_SIZE);
+    lfs_err = lfs_file_read(&_lfs, &file, ram_memory,
+                            romInfo->numRamBanks * GB_RAM_BANK_SIZE);
     printf("read %d bytes\n", lfs_err);
 
     if (lfs_err >= 0) {
@@ -442,13 +447,13 @@ void restoreSaveRamFromFile(uint32_t game) {
   }
 }
 
-void storeSaveRamInFile(uint32_t game) {
+void storeSaveRamInFile(const struct RomInfo *romInfo) {
   lfs_file_t file;
   int lfs_err;
   struct lfs_file_config fileconfig = {.buffer = _lfsFileBuffer};
   char filenamebuffer[40] = "saves/";
   strcpy(&filenamebuffer[strlen(filenamebuffer)],
-         (const char *)&(g_shortRomInfos[game].name));
+         (const char *)&(romInfo->name));
   printf("Saving game RAM to file %s\n", filenamebuffer);
 
   lfs_err = lfs_file_opencfg(&_lfs, &file, filenamebuffer,
@@ -458,9 +463,8 @@ void storeSaveRamInFile(uint32_t game) {
     printf("Error opening file %d\n", lfs_err);
   }
 
-  lfs_err =
-      lfs_file_write(&_lfs, &file, ram_memory,
-                     g_shortRomInfos[game].numRamBanks * GB_RAM_BANK_SIZE);
+  lfs_err = lfs_file_write(&_lfs, &file, ram_memory,
+                           romInfo->numRamBanks * GB_RAM_BANK_SIZE);
   printf("wrote %d bytes\n", lfs_err);
 
   lfs_file_close(&_lfs, &file);

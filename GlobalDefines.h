@@ -40,7 +40,6 @@
 #define GB_MAX_RAM_BANKS 16
 
 #define ROM_STORAGE_FLASH_START_ADDR 0x00020000
-#define MAX_ALLOWED_ROMS 16
 #define MAX_BANKS 888
 #define MAX_BANKS_PER_ROM 0x200
 
@@ -53,23 +52,31 @@ extern uint8_t ram_memory[];
 extern uint8_t memory_vblank_hook_bank[];
 extern uint8_t memory_vblank_hook_bank2[];
 
-struct ShortRomInfo {
-  char name[17];
+struct RomInfo {
   const uint8_t *firstBank;
-  uint8_t numRamBanks;
   uint16_t speedSwitchBank;
+  uint8_t numRamBanks;
+  char name[17];
 };
 
-extern struct ShortRomInfo g_shortRomInfos[MAX_ALLOWED_ROMS];
 extern uint8_t g_numRoms;
 
 extern const uint8_t *g_loadedRomBanks[MAX_BANKS_PER_ROM];
 extern uint32_t g_loadedDirectAccessRomBanks[MAX_BANKS_PER_ROM];
+extern struct RomInfo g_loadedRomInfo;
+
 
 void setSsi8bit();
 void setSsi32bit();
 void loadDoubleSpeedPio();
-void storeSaveRamInFile(uint32_t game);
-void restoreSaveRamFromFile(uint32_t game);
+void storeSaveRamInFile(const struct RomInfo *shortRomInfo);
+void restoreSaveRamFromFile(const struct RomInfo *shortRomInfo);
+
+
+/* taken from
+ * https://github.com/tihmstar/libgeneral/blob/master/include/libgeneral/macros.h.in
+*/
+#define ASSURE(a) do{ if ((a) == 0){err=__LINE__; goto error;} }while(0)
+#define PRINTASSURE(cond, errstr ...) do{ if ((cond) == 0){err=__LINE__;printf(errstr); goto error;} }while(0)
 
 #endif /* A6E4EABE_18C1_4BCB_A021_7C59DEE53104 */
