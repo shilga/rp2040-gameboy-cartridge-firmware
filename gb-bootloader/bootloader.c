@@ -71,9 +71,9 @@ const palette_color_t backgroundpalette[] = {
 };
 
 #define INVERTED_DMG_PALETTE                                                   \
-  DMG_PALETTE(DMG_BLACK, DMG_DARK_GRAY, DMG_LITE_GRAY, DMG_WHITE);
+  DMG_PALETTE(DMG_BLACK, DMG_LITE_GRAY, DMG_DARK_GRAY, DMG_WHITE);
 #define NORMAL_DMG_PALETTE                                                     \
-  DMG_PALETTE(DMG_WHITE, DMG_DARK_GRAY, DMG_LITE_GRAY, DMG_BLACK);
+  DMG_PALETTE(DMG_WHITE, DMG_LITE_GRAY, DMG_DARK_GRAY, DMG_BLACK);
 
 static uint8_t gForceDrawScreen = 1;
 static uint8_t gHighlightOffset = 1;
@@ -132,8 +132,8 @@ void highlightLine(uint8_t idx) {
 
 void renderGamelist(uint8_t first, uint8_t selected) {
   gotoxy(0, 0);
-  const char *spacer_selected = selected <= 9 ? " " : "";
-  const char *spacer_games = s_GamesCount <= 9 ? " " : "";
+  const char *spacer_selected = selected < 9 ? " " : "";
+  const char *spacer_games = s_GamesCount < 9 ? " " : "";
   printf("***  Games %s%d/%s%d ***", spacer_selected, selected + 1,
          spacer_games, s_GamesCount);
   char *pRomNames = s_sharedData->rom_names;
