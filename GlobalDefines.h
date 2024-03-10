@@ -52,7 +52,7 @@ extern uint8_t ram_memory[];
 extern uint8_t memory_vblank_hook_bank[];
 extern uint8_t memory_vblank_hook_bank2[];
 
-struct ShortRomInfo {
+struct RomInfo {
   const uint8_t *firstBank;
   uint16_t speedSwitchBank;
   uint8_t numRamBanks;
@@ -63,22 +63,20 @@ extern uint8_t g_numRoms;
 
 extern const uint8_t *g_loadedRomBanks[MAX_BANKS_PER_ROM];
 extern uint32_t g_loadedDirectAccessRomBanks[MAX_BANKS_PER_ROM];
-extern struct ShortRomInfo g_loadedShortRomInfo;
+extern struct RomInfo g_loadedRomInfo;
 
 
 void setSsi8bit();
 void setSsi32bit();
 void loadDoubleSpeedPio();
-void storeSaveRamInFile(const struct ShortRomInfo *shortRomInfo);
-void restoreSaveRamFromFile(const struct ShortRomInfo *shortRomInfo);
+void storeSaveRamInFile(const struct RomInfo *shortRomInfo);
+void restoreSaveRamFromFile(const struct RomInfo *shortRomInfo);
 
 
-/*
-    libgeneral: https://github.com/tihmstar/libgeneral/blob/master/include/libgeneral/macros.h.in
+/* taken from
+ * https://github.com/tihmstar/libgeneral/blob/master/include/libgeneral/macros.h.in
 */
-
-#define cassure(a) do{ if ((a) == 0){err=__LINE__; goto error;} }while(0)
-#define cretassure(cond, errstr ...) do{ if ((cond) == 0){err=__LINE__;printf(errstr); goto error;} }while(0)
-#define creterror(errstr ...) do{printf(errstr);err=__LINE__; goto error; }while(0)
+#define ASSURE(a) do{ if ((a) == 0){err=__LINE__; goto error;} }while(0)
+#define PRINTASSURE(cond, errstr ...) do{ if ((cond) == 0){err=__LINE__;printf(errstr); goto error;} }while(0)
 
 #endif /* A6E4EABE_18C1_4BCB_A021_7C59DEE53104 */

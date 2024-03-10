@@ -107,11 +107,9 @@ static int readRomInfoFile(lfs_file_t *file) {
 
 int RomStorage_init(lfs_t *lfs) {
   int err = 0;
-  //
   lfs_dir_t dir = {};
   lfs_file_t file = {};
   struct lfs_info lfsInfo = {};
-  //
   int lfs_err = 0;
 
   _lfs = lfs;
@@ -121,23 +119,25 @@ int RomStorage_init(lfs_t *lfs) {
   _usedBanks = 0;
 
   lfs_err = lfs_mkdir(_lfs, "/roms");
-  cretassure((lfs_err == LFS_ERR_OK) || (lfs_err == LFS_ERR_EXIST),"Error creating roms directory %d\n", lfs_err);
+  PRINTASSURE((lfs_err == LFS_ERR_OK) || (lfs_err == LFS_ERR_EXIST),
+              "Error creating roms directory %d\n", lfs_err);
 
   lfs_err = lfs_dir_open(_lfs, &dir, "/roms");
-  cassure(lfs_err == LFS_ERR_OK);
+  ASSURE(lfs_err == LFS_ERR_OK);
 
   lfs_err = lfs_dir_read(_lfs, &dir, &lfsInfo);
   while (lfs_err > 0) {
     if (lfsInfo.type == LFS_TYPE_REG) {
       char filename[32];
-      snprintf(filename,sizeof(filename),"/roms/%s",lfsInfo.name);
+      snprintf(filename, sizeof(filename), "/roms/%s", lfsInfo.name);
       printf("Reading %s\n", filename);
-      lfs_err = lfs_file_opencfg(_lfs, &file, filename, LFS_O_RDONLY, &_fileconfig);
-      cretassure(lfs_err == LFS_ERR_OK,"Error opening file %d\n", lfs_err);
+      lfs_err =
+          lfs_file_opencfg(_lfs, &file, filename, LFS_O_RDONLY, &_fileconfig);
+      PRINTASSURE(lfs_err == LFS_ERR_OK, "Error opening file %d\n", lfs_err);
 
       lfs_err = readRomInfoFile(&file);
       lfs_file_close(_lfs, &file);
-      cassure(lfs_err == LFS_ERR_OK);
+      ASSURE(lfs_err == LFS_ERR_OK);
 
       for (size_t i = 0; i < _romInfoFile.numBanks; i++) {
         SetBit(_usedBanksFlags, _romInfoFile.banks[i]);
@@ -158,46 +158,49 @@ error:
   return err;
 }
 
-int RomStorage_loadShortRomInfo(uint32_t game, struct ShortRomInfo *outShortRomInfo){
+int RomStorage_loadRomInfo(uint32_t rom, struct RomInfo *outRomInfo) {
   int err = 0;
-  //
   lfs_dir_t dir = {};
   lfs_file_t file = {};
   struct lfs_info lfsInfo = {};
-  //
   int lfs_err = 0;
+  bool romFound = false;
 
-  cassure(game < g_numRoms);
+  ASSURE(rom < g_numRoms);
 
   lfs_err = lfs_dir_open(_lfs, &dir, "/roms");
-  cassure(lfs_err == LFS_ERR_OK);
+  ASSURE(lfs_err == LFS_ERR_OK);
 
   lfs_err = lfs_dir_read(_lfs, &dir, &lfsInfo);
-  while (lfs_err > 0) {
-    if (lfsInfo.type == LFS_TYPE_REG && game-- == 0) {
+  while ((lfs_err > 0) && !romFound) {
+    if (lfsInfo.type == LFS_TYPE_REG && rom-- == 0) {
       char filename[32];
-      snprintf(filename,sizeof(filename),"/roms/%s",lfsInfo.name);
-      printf("RomStorage_loadShortRomInfo %s\n", filename);
-      lfs_err = lfs_file_opencfg(_lfs, &file, filename, LFS_O_RDONLY, &_fileconfig);
-      cretassure(lfs_err == LFS_ERR_OK,"Error opening file %d\n", lfs_err);
+      snprintf(filename, sizeof(filename), "/roms/%s", lfsInfo.name);
+      printf("RomStorage_loadRomInfo %s\n", filename);
+      lfs_err =
+          lfs_file_opencfg(_lfs, &file, filename, LFS_O_RDONLY, &_fileconfig);
+      PRINTASSURE(lfs_err == LFS_ERR_OK, "Error opening file %d\n", lfs_err);
 
       lfs_err = readRomInfoFile(&file);
 
       lfs_file_close(_lfs, &file);
-      cassure(lfs_err == LFS_ERR_OK);
+      ASSURE(lfs_err == LFS_ERR_OK);
 
-      memcpy(outShortRomInfo->name, lfsInfo.name, 16);
-      outShortRomInfo->name[16] = 0;
-      outShortRomInfo->firstBank = RomBankToPointer(_romInfoFile.banks[0]);
-      outShortRomInfo->numRamBanks = GameBoyHeader_readRamBankCount(outShortRomInfo->firstBank);
-      outShortRomInfo->speedSwitchBank = _romInfoFile.speedSwitchBank;
-      goto success;
+      memcpy(outRomInfo->name, lfsInfo.name, 16);
+      outRomInfo->name[16] = 0;
+      outRomInfo->firstBank = RomBankToPointer(_romInfoFile.banks[0]);
+      outRomInfo->numRamBanks =
+          GameBoyHeader_readRamBankCount(outRomInfo->firstBank);
+      outRomInfo->speedSwitchBank = _romInfoFile.speedSwitchBank;
+
+      romFound = true;
     }
 
     lfs_err = lfs_dir_read(_lfs, &dir, &lfsInfo);
   }
-  creterror("Failed to find game %d\n");
-success:
+
+  ASSURE(romFound);
+
 error:
   lfs_dir_close(_lfs, &dir);
   return err;
@@ -356,18 +359,16 @@ uint16_t RomStorage_GetNumUsedBanks() { return _usedBanks; }
 int RomStorage_DeleteRom(uint8_t rom) {
   int err = 0;
   int lfs_err = 0;
-  //
-  //
-  struct ShortRomInfo sRI = {};
-  
+  struct RomInfo romInfo = {};
+
   if (rom >= g_numRoms) {
     return -1;
   }
 
-  cassure(!RomStorage_loadShortRomInfo(rom, &sRI));
+  ASSURE(!RomStorage_loadRomInfo(rom, &romInfo));
 
-  memcpy(&_fileNameBuffer[6], sRI.name, 17);
-  memcpy(&_filenamebufferSaves[6], sRI.name, 17);
+  memcpy(&_fileNameBuffer[6], romInfo.name, 17);
+  memcpy(&_filenamebufferSaves[6], romInfo.name, 17);
 
   printf("Deleting ROM %d, %s\n", rom, _fileNameBuffer);
   printf("Deleting savegame %s\n", _filenamebufferSaves);
@@ -378,7 +379,7 @@ int RomStorage_DeleteRom(uint8_t rom) {
   }
 
   lfs_err = lfs_remove(_lfs, _fileNameBuffer);
-  cretassure(lfs_err >= 0, "Error deleting ROM file %d\n", lfs_err);
+  PRINTASSURE(lfs_err >= 0, "Error deleting ROM file %d\n", lfs_err);
 
 error:
   err = RomStorage_init(_lfs); // reinit to reload ROM info
@@ -401,21 +402,22 @@ int RomStorage_StartRamDownload(uint8_t rom) {
     return -3;
   }
 
-  cassure(!RomStorage_loadShortRomInfo(rom, &g_loadedShortRomInfo));  
+  ASSURE(!RomStorage_loadRomInfo(rom, &g_loadedRomInfo));
 
-  if (g_loadedShortRomInfo.numRamBanks == 0) {
+  if (g_loadedRomInfo.numRamBanks == 0) {
     return -3;
   }
 
   _ramTransferActive = true;
 
-  memcpy(&_filenamebufferSaves[6], g_loadedShortRomInfo.name, 17);
+  memcpy(&_filenamebufferSaves[6], g_loadedRomInfo.name, 17);
 
   printf("Loading savefile %d, %s\n", rom, _filenamebufferSaves);
 
-  lfs_err = lfs_file_opencfg(_lfs, &_ramTransferFile, _filenamebufferSaves, LFS_O_RDONLY, &_fileconfig);
+  lfs_err = lfs_file_opencfg(_lfs, &_ramTransferFile, _filenamebufferSaves,
+                             LFS_O_RDONLY, &_fileconfig);
 
-  cretassure(lfs_err == LFS_ERR_OK,"Error opening file %d\n", lfs_err);
+  PRINTASSURE(lfs_err == LFS_ERR_OK, "Error opening file %d\n", lfs_err);
 
   _ramBytesTransferred = 0;
 
@@ -439,7 +441,7 @@ int RomStorage_GetRamDownloadChunk(uint8_t data[32], uint16_t *bank,
 
   _ramBytesTransferred += 32;
 
-  if (_ramBytesTransferred >= g_loadedShortRomInfo.numRamBanks * GB_RAM_BANK_SIZE) {
+  if (_ramBytesTransferred >= g_loadedRomInfo.numRamBanks * GB_RAM_BANK_SIZE) {
     printf("RAM transfer finished\n");
 
     lfs_file_close(_lfs, &_ramTransferFile);
@@ -467,21 +469,22 @@ int RomStorage_StartRamUpload(uint8_t rom) {
     return -3;
   }
 
-  cassure(!RomStorage_loadShortRomInfo(rom, &g_loadedShortRomInfo));  
+  ASSURE(!RomStorage_loadRomInfo(rom, &g_loadedRomInfo));
 
-  if (g_loadedShortRomInfo.numRamBanks == 0) {
+  if (g_loadedRomInfo.numRamBanks == 0) {
     return -3;
   }
 
   _ramTransferActive = true;
 
-  memcpy(&_filenamebufferSaves[6], g_loadedShortRomInfo.name, 17);
+  memcpy(&_filenamebufferSaves[6], g_loadedRomInfo.name, 17);
 
   printf("Opening savefile %d, %s\n", rom, _filenamebufferSaves);
 
-  lfs_err = lfs_file_opencfg(_lfs, &_ramTransferFile, _filenamebufferSaves, LFS_O_WRONLY | LFS_O_CREAT, &_fileconfig);
+  lfs_err = lfs_file_opencfg(_lfs, &_ramTransferFile, _filenamebufferSaves,
+                             LFS_O_WRONLY | LFS_O_CREAT, &_fileconfig);
 
-  cretassure(lfs_err == LFS_ERR_OK,"Error opening file %d\n", lfs_err);
+  PRINTASSURE(lfs_err == LFS_ERR_OK, "Error opening file %d\n", lfs_err);
 
   _ramBytesTransferred = 0;
 
@@ -519,7 +522,7 @@ int RomStorage_TransferRamUploadChunk(uint16_t bank, uint16_t chunk,
 
   _ramBytesTransferred += 32;
 
-  if (_ramBytesTransferred >= g_loadedShortRomInfo.numRamBanks * GB_RAM_BANK_SIZE) {
+  if (_ramBytesTransferred >= g_loadedRomInfo.numRamBanks * GB_RAM_BANK_SIZE) {
     printf("RAM transfer finished\n");
 
     lfs_file_close(_lfs, &_ramTransferFile);
@@ -543,9 +546,9 @@ const int RomStorage_LoadRom(uint8_t rom) {
     return -2;
   }
 
-  RomStorage_loadShortRomInfo(rom, &g_loadedShortRomInfo);
+  RomStorage_loadRomInfo(rom, &g_loadedRomInfo);
 
-  memcpy(&_fileNameBuffer[6], g_loadedShortRomInfo.name, 17);
+  memcpy(&_fileNameBuffer[6], g_loadedRomInfo.name, 17);
 
   printf("Loading ROM %d, %s\n", rom, _fileNameBuffer);
 

@@ -295,11 +295,11 @@ static int handle_request_rom_info_command(uint8_t buff[63]) {
   }
 
   {
-    struct ShortRomInfo sRI = {};
-    if (RomStorage_loadShortRomInfo(requestedRom,&sRI)) 
+    struct RomInfo romInfo = {};
+    if (RomStorage_loadRomInfo(requestedRom, &romInfo))
       return -1;
-    memcpy(buff, &sRI.name, 17);
-    buff[17] = sRI.numRamBanks;
+    memcpy(buff, &romInfo.name, 17);
+    buff[17] = romInfo.numRamBanks;
   }
 
   return 18;

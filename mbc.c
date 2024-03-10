@@ -40,9 +40,9 @@
 static bool _ramDirty = false;
 static uint8_t _currentGame = 0xFF;
 static uint16_t _numRomBanks = 0;
+static uint8_t _numRamBanks = 0;
 static uint8_t _vBlankMode = 0;
 static uint8_t *_bankWithVBlankOverride = &memory[2 * GB_ROM_BANK_SIZE];
-static struct ShortRomInfo _shortRomInfo = {};
 
 void runNoMbcGame();
 void runMbc1Game();
@@ -57,7 +57,7 @@ void storeCurrentlyRunningSaveGame();
 void loadGame(uint8_t game, uint8_t mode) {
   uint8_t mbc = 0xFF;
 
-  const uint8_t *gameptr = g_loadedShortRomInfo.firstBank;
+  const uint8_t *gameptr = g_loadedRomInfo.firstBank;
 
   printf("Loading selected game info at %p:\n", gameptr);
 
@@ -95,14 +95,15 @@ void loadGame(uint8_t game, uint8_t mode) {
   _currentGame = game;
   _numRomBanks = 1 << (gameptr[0x0148] + 1);
   _vBlankMode = mode;
+  _numRamBanks = g_loadedRomInfo.numRamBanks;
 
   printf("MBC:       %d\n", mbc);
   printf("name:      %s\n", (const char *)&gameptr[0x134]);
   printf("rom banks: %d\n", _numRomBanks);
-  printf("ram banks: %d\n", g_loadedShortRomInfo.numRamBanks);
+  printf("ram banks: %d\n", g_loadedRomInfo.numRamBanks);
 
-  if (g_loadedShortRomInfo.numRamBanks > 0) {
-    restoreSaveRamFromFile(&g_loadedShortRomInfo);
+  if (g_loadedRomInfo.numRamBanks > 0) {
+    restoreSaveRamFromFile(&g_loadedRomInfo);
   } else {
     _vBlankMode = 0;
   }
@@ -111,7 +112,7 @@ void loadGame(uint8_t game, uint8_t mode) {
     _vBlankMode = 0;
   }
 
-  if (g_loadedShortRomInfo.numRamBanks > GB_MAX_RAM_BANKS) {
+  if (g_loadedRomInfo.numRamBanks > GB_MAX_RAM_BANKS) {
     printf("Game needs too much RAM\n");
     return;
   }
@@ -304,8 +305,8 @@ void __no_inline_not_in_flash_func(runMbc3Game)() {
 
   rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[1];
 
-  if (g_loadedShortRomInfo.speedSwitchBank <= _numRomBanks) {
-    speedSwitchBank = g_loadedShortRomInfo.speedSwitchBank;
+  if (g_loadedRomInfo.speedSwitchBank <= _numRomBanks) {
+    speedSwitchBank = g_loadedRomInfo.speedSwitchBank;
   }
 
   memcpy(&memory[GB_ROM_BANK_SIZE], g_loadedRomBanks[speedSwitchBank],
@@ -397,11 +398,11 @@ void __no_inline_not_in_flash_func(runMbc5Game)() {
   bool ram_enabled = 0;
   bool new_ram_enabled = 0;
   const uint16_t rom_banks_mask = _numRomBanks - 1;
-  const uint8_t ram_banks_mask = g_loadedShortRomInfo.numRamBanks - 1;
+  const uint8_t ram_banks_mask = _numRamBanks - 1;
   uint16_t speedSwitchBank = 1U;
 
-  if (g_loadedShortRomInfo.speedSwitchBank <= _numRomBanks) {
-    speedSwitchBank = g_loadedShortRomInfo.speedSwitchBank;
+  if (g_loadedRomInfo.speedSwitchBank <= _numRomBanks) {
+    speedSwitchBank = g_loadedRomInfo.speedSwitchBank;
   }
 
   memcpy(&memory[GB_ROM_BANK_SIZE], g_loadedRomBanks[speedSwitchBank],
@@ -606,7 +607,7 @@ void __no_inline_not_in_flash_func(storeCurrentlyRunningSaveGame)() {
   setSsi32bit();
   __compiler_memory_barrier();
 
-  storeSaveRamInFile(&g_loadedShortRomInfo);
+  storeSaveRamInFile(&g_loadedRomInfo);
 
   ws2812b_setRgb(0, 0x10, 0);
 
