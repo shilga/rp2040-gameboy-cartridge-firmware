@@ -72,4 +72,4 @@ Find the Kicad project files in this [repo](https://github.com/shilga/rp2040-gam
 
 
 ## Discord
-Find the Discord server to get help or discuss about this project. <https://discord.gg/dxRcBQSc>
+Find the Discord server to get help or discuss about this project. <https://discord.com/invite/jxGfqw2mdt>
