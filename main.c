@@ -239,7 +239,7 @@ int main() {
   if (0 != RomStorage_LoadRom(game)) {
     printf("Error reading ROM\n");
   } else {
-    loadGame(game, mode);
+    loadGame(mode);
   }
 
   // should only be reached in case there was an error loading the game

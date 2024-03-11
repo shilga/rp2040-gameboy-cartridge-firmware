@@ -38,7 +38,6 @@
 #include "gb-vblankhook/gbSaveGameVBlankHook.h"
 
 static bool _ramDirty = false;
-static uint8_t _currentGame = 0xFF;
 static uint16_t _numRomBanks = 0;
 static uint8_t _numRamBanks = 0;
 static uint8_t _vBlankMode = 0;
@@ -54,7 +53,7 @@ void process_vblank_hook(uint16_t addr);
 void initialize_vblank_hook();
 void storeCurrentlyRunningSaveGame();
 
-void loadGame(uint8_t game, uint8_t mode) {
+void loadGame(uint8_t mode) {
   uint8_t mbc = 0xFF;
 
   const uint8_t *gameptr = g_loadedRomInfo.firstBank;
@@ -92,7 +91,6 @@ void loadGame(uint8_t game, uint8_t mode) {
     break;
   }
 
-  _currentGame = game;
   _numRomBanks = 1 << (gameptr[0x0148] + 1);
   _vBlankMode = mode;
   _numRamBanks = g_loadedRomInfo.numRamBanks;

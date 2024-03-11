@@ -43,6 +43,14 @@
 #define MAX_BANKS 888
 #define MAX_BANKS_PER_ROM 0x200
 
+/*
+ * With the current implementation the list of ROMs can
+ * use 4k of the saveram. With 20 characters per string
+ * that gives around 200 possible games. Use 180 to be
+ * save as also other information is stored in that area.
+ */
+#define MAX_ALLOWED_ROMS 180
+
 extern const volatile uint8_t *volatile ram_base;
 extern const volatile uint8_t *volatile rom_low_base;
 extern volatile uint32_t rom_high_base_flash_direct;
@@ -64,7 +72,6 @@ extern uint8_t g_numRoms;
 extern const uint8_t *g_loadedRomBanks[MAX_BANKS_PER_ROM];
 extern uint32_t g_loadedDirectAccessRomBanks[MAX_BANKS_PER_ROM];
 extern struct RomInfo g_loadedRomInfo;
-
 
 void setSsi8bit();
 void setSsi32bit();
