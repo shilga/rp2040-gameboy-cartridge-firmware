@@ -79,11 +79,24 @@ void loadDoubleSpeedPio();
 void storeSaveRamInFile(const struct RomInfo *shortRomInfo);
 void restoreSaveRamFromFile(const struct RomInfo *shortRomInfo);
 
-
 /* taken from
  * https://github.com/tihmstar/libgeneral/blob/master/include/libgeneral/macros.h.in
-*/
-#define ASSURE(a) do{ if ((a) == 0){err=__LINE__; goto error;} }while(0)
-#define PRINTASSURE(cond, errstr ...) do{ if ((cond) == 0){err=__LINE__;printf(errstr); goto error;} }while(0)
+ */
+#define ASSURE(a)                                                              \
+  do {                                                                         \
+    if ((a) == 0) {                                                            \
+      err = -(__LINE__);                                                       \
+      goto error;                                                              \
+    }                                                                          \
+  } while (0)
+
+#define PRINTASSURE(cond, errstr...)                                           \
+  do {                                                                         \
+    if ((cond) == 0) {                                                         \
+      err = -(__LINE__);                                                       \
+      printf(errstr);                                                          \
+      goto error;                                                              \
+    }                                                                          \
+  } while (0)
 
 #endif /* A6E4EABE_18C1_4BCB_A021_7C59DEE53104 */
