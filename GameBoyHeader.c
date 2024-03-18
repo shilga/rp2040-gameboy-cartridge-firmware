@@ -16,6 +16,7 @@
  */
 
 #include "GameBoyHeader.h"
+#include <stdint.h>
 
 uint8_t GameBoyHeader_readRamBankCount(const uint8_t *gameptr) {
   static const uint8_t LOOKUP[] = {0, 0, 1, 4, 16, 8};
@@ -26,4 +27,14 @@ uint8_t GameBoyHeader_readRamBankCount(const uint8_t *gameptr) {
   }
 
   return 0xFF;
+}
+
+bool GameBoyHeader_hasRtc(const uint8_t *gameptr) {
+  const uint8_t cartridgeType = gameptr[0x0147];
+
+  if ((cartridgeType == 0x0F) || (cartridgeType == 0x10)) {
+    return true;
+  } else {
+    return false;
+  }
 }

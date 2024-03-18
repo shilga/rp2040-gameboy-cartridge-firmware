@@ -10,6 +10,10 @@ static uint8_t _currentRegister = 0;
 static uint64_t _lastMilli = 0;
 static uint32_t _millies = 0;
 
+static uint64_t _lastTimestampTick = 0;
+
+static inline void GbRtc_processTick();
+
 void __no_inline_not_in_flash_func(GbRtc_WriteRegister)(uint8_t val) {
   const uint8_t oldHalt = g_rtcReal.reg.status.halt;
 
@@ -36,7 +40,6 @@ void __no_inline_not_in_flash_func(GbRtc_ActivateRegister)(uint8_t reg) {
 
 void __no_inline_not_in_flash_func(GbRtc_PerformRtcTick)() {
   uint64_t now = time_us_64();
-  uint8_t registerToMask = 0;
 
   if (!g_rtcReal.reg.status.halt) {
     if ((now - _lastMilli) > 1000U) {
@@ -45,41 +48,66 @@ void __no_inline_not_in_flash_func(GbRtc_PerformRtcTick)() {
     }
 
     if (_millies >= 1000) {
-      g_rtcReal.reg.seconds++;
       _millies = 0;
+      GbRtc_processTick();
+    }
+  }
+
+  if ((now - _lastTimestampTick) > 1000000U) {
+    g_rtcTimestamp++;
+    _lastTimestampTick = now;
+  }
+}
+
+static inline void GbRtc_processTick() {
+  uint8_t registerToMask = 0;
+
+  g_rtcReal.reg.seconds++;
+  g_rtcReal.asArray[registerToMask] &= _registerMasks[registerToMask];
+  registerToMask++;
+
+  if (g_rtcReal.reg.seconds == 60) {
+    g_rtcReal.reg.seconds = 0;
+    g_rtcReal.reg.minutes++;
+
+    g_rtcReal.asArray[registerToMask] &= _registerMasks[registerToMask];
+    registerToMask++;
+
+    if (g_rtcReal.reg.minutes == 60) {
+      g_rtcReal.reg.minutes = 0;
+      g_rtcReal.reg.hours++;
+
+      g_rtcReal.asArray[registerToMask] &= _registerMasks[registerToMask];
+      registerToMask++;
+    }
+
+    if (g_rtcReal.reg.hours == 24) {
+      g_rtcReal.reg.hours = 0;
+      g_rtcReal.reg.days++;
+
       g_rtcReal.asArray[registerToMask] &= _registerMasks[registerToMask];
       registerToMask++;
 
-      if (g_rtcReal.reg.seconds == 60) {
-        g_rtcReal.reg.seconds = 0;
-        g_rtcReal.reg.minutes++;
-
-        g_rtcReal.asArray[registerToMask] &= _registerMasks[registerToMask];
-        registerToMask++;
-
-        if (g_rtcReal.reg.minutes == 60) {
-          g_rtcReal.reg.minutes = 0;
-          g_rtcReal.reg.hours++;
-
-          g_rtcReal.asArray[registerToMask] &= _registerMasks[registerToMask];
-          registerToMask++;
+      if (g_rtcReal.reg.days == 0) {
+        if (g_rtcReal.reg.status.days_high) {
+          g_rtcReal.reg.status.days_carry = 1;
         }
-
-        if (g_rtcReal.reg.hours == 24) {
-          g_rtcReal.reg.hours = 0;
-          g_rtcReal.reg.days++;
-
-          g_rtcReal.asArray[registerToMask] &= _registerMasks[registerToMask];
-          registerToMask++;
-
-          if (g_rtcReal.reg.days == 0) {
-            if (g_rtcReal.reg.status.days_high) {
-              g_rtcReal.reg.status.days_carry = 1;
-            }
-            g_rtcReal.reg.status.days_high++;
-          }
-        }
+        g_rtcReal.reg.status.days_high++;
       }
     }
+  }
+}
+
+void GbRtc_advanceToNewTimestamp(uint64_t newTimestamp) {
+  uint64_t diff;
+  if (newTimestamp > g_rtcTimestamp) {
+    diff = newTimestamp - g_rtcTimestamp;
+
+    while (diff > 0) {
+      GbRtc_processTick();
+      diff++;
+    }
+
+    _millies = 0;
   }
 }

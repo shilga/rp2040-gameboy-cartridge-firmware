@@ -47,6 +47,7 @@
 #include <git_commit.h>
 
 #include "BuildVersion.h"
+#include "GameBoyHeader.h"
 #include "gb-bootloader/gbbootloader.h"
 
 #include "BuildVersion.h"
@@ -75,6 +76,7 @@ ram_memory[(GB_MAX_RAM_BANKS + 1) * GB_RAM_BANK_SIZE]
 
 volatile union GbRtcUnion __attribute__((section(".noinit."))) g_rtcReal;
 volatile union GbRtcUnion __attribute__((section(".noinit."))) g_rtcLatched;
+uint64_t __attribute__((section(".noinit."))) g_rtcTimestamp;
 
 uint8_t g_numRoms = 0;
 const uint8_t *g_loadedRomBanks[MAX_BANKS_PER_ROM];
@@ -145,9 +147,6 @@ int main() {
   gpio_set_function(WS2812_PIN, GPIO_FUNC_SPI);
   ws2812b_setRgb(0, 0, 0);
 
-  memset((void *)&g_rtcLatched, 0, sizeof(g_rtcLatched));
-  memset((void *)&g_rtcReal, 0, sizeof(g_rtcLatched));
-
   // Load the gameboy_bus programs into it's respective PIOs
   _offset_main = pio_add_program(pio1, &gameboy_bus_program);
   uint offset_detect_a14 =
@@ -202,6 +201,8 @@ int main() {
   if (_noInitTest != 0xcafeaffe) {
     _noInitTest = 0xcafeaffe;
     _lastRunningGame = 0xFF;
+    memset((void *)&g_rtcLatched, 0, sizeof(g_rtcLatched));
+    memset((void *)&g_rtcReal, 0, sizeof(g_rtcLatched));
     printf("NoInit initialized\n");
   }
 
@@ -224,17 +225,25 @@ int main() {
   if ((lfs_err != LFS_ERR_OK) && (lfs_err != LFS_ERR_EXIST)) {
     printf("Error creating saves directory %d\n", lfs_err);
   }
+  lfs_err = lfs_mkdir(&_lfs, "/rtc");
+  if ((lfs_err != LFS_ERR_OK) && (lfs_err != LFS_ERR_EXIST)) {
+    printf("Error creating rtc directory %d\n", lfs_err);
+  }
 
   RomStorage_init(&_lfs);
 
   if (_lastRunningGame < g_numRoms) {
     printf("Game %d was running before reset\n", _lastRunningGame);
 
-    if (g_loadedRomInfo.numRamBanks > 0) {
-      storeSaveRamInFile(&g_loadedRomInfo);
-
-      _lastRunningGame = 0xFF;
+    if (GameBoyHeader_hasRtc(g_loadedRomInfo.firstBank)) {
+      storeRtcToFile(&g_loadedRomInfo);
     }
+
+    if (g_loadedRomInfo.numRamBanks > 0) {
+      storeSaveRamToFile(&g_loadedRomInfo);
+    }
+
+    _lastRunningGame = 0xFF;
   }
 
   uint8_t game = 0xFF, mode = 0;
@@ -456,7 +465,7 @@ void restoreSaveRamFromFile(const struct RomInfo *romInfo) {
   }
 }
 
-void storeSaveRamInFile(const struct RomInfo *romInfo) {
+void storeSaveRamToFile(const struct RomInfo *romInfo) {
   lfs_file_t file;
   int lfs_err;
   struct lfs_file_config fileconfig = {.buffer = _lfsFileBuffer};
@@ -479,4 +488,58 @@ void storeSaveRamInFile(const struct RomInfo *romInfo) {
   lfs_file_close(&_lfs, &file);
 
   ws2812b_setRgb(0, 0x10, 0); // light up LED in green
+}
+
+void restoreRtcFromFile(const struct RomInfo *romInfo) {
+  lfs_file_t file;
+  struct lfs_file_config fileconfig = {.buffer = _lfsFileBuffer};
+  char filenamebuffer[40] = "rtc/";
+
+  strcpy(&filenamebuffer[strlen(filenamebuffer)], romInfo->name);
+
+  int lfs_err =
+      lfs_file_opencfg(&_lfs, &file, filenamebuffer, LFS_O_RDONLY, &fileconfig);
+
+  if (lfs_err == LFS_ERR_OK) {
+    printf("found rtc at %s\n", filenamebuffer);
+
+    lfs_err = lfs_file_read(&_lfs, &file, (uint8_t *)&g_rtcReal.asArray[0],
+                            sizeof(struct GbRtc));
+    lfs_err += lfs_file_read(&_lfs, &file, (uint8_t *)&g_rtcLatched.asArray[0],
+                             sizeof(struct GbRtc));
+    lfs_err += lfs_file_read(&_lfs, &file, &g_rtcTimestamp, sizeof(uint64_t));
+    printf("read %d bytes\n", lfs_err);
+
+    if (lfs_err >= 0) {
+      lfs_file_close(&_lfs, &file);
+    }
+  }
+}
+
+void storeRtcToFile(const struct RomInfo *romInfo) {
+  lfs_file_t file;
+  int lfs_err;
+  struct lfs_file_config fileconfig = {.buffer = _lfsFileBuffer};
+  char filenamebuffer[40] = "rtc/";
+
+  strcpy(&filenamebuffer[strlen(filenamebuffer)],
+         (const char *)&(romInfo->name));
+  printf("Saving RTC to file %s\n", filenamebuffer);
+
+  lfs_err = lfs_file_opencfg(&_lfs, &file, filenamebuffer,
+                             LFS_O_WRONLY | LFS_O_CREAT, &fileconfig);
+
+  if (lfs_err != LFS_ERR_OK) {
+    printf("Error opening file %d\n", lfs_err);
+  }
+
+  lfs_err = lfs_file_write(&_lfs, &file, (uint8_t *)&g_rtcReal.asArray[0],
+                           sizeof(struct GbRtc));
+  lfs_err += lfs_file_write(&_lfs, &file, (uint8_t *)&g_rtcLatched.asArray[0],
+                            sizeof(struct GbRtc));
+  lfs_err += lfs_file_write(&_lfs, &file, &g_rtcTimestamp, sizeof(uint64_t));
+
+  printf("wrote %d bytes\n", lfs_err);
+
+  lfs_file_close(&_lfs, &file);
 }

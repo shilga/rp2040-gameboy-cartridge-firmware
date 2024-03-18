@@ -20,6 +20,7 @@
 #include "GbRtc.h"
 #include "GlobalDefines.h"
 #include "ws2812b_spi.h"
+#include "BuildVersion.h"
 
 #include <assert.h>
 #include <stdbool.h>
@@ -102,6 +103,11 @@ void loadGame(uint8_t mode) {
   printf("name:      %s\n", (const char *)&gameptr[0x134]);
   printf("rom banks: %d\n", _numRomBanks);
   printf("ram banks: %d\n", g_loadedRomInfo.numRamBanks);
+
+  if (_hasRtc) {
+    restoreRtcFromFile(&g_loadedRomInfo);
+    GbRtc_advanceToNewTimestamp(RP2040_GB_CARTRIDGE_BUILD_TIMESTAMP);
+  }
 
   if (g_loadedRomInfo.numRamBanks > 0) {
     restoreSaveRamFromFile(&g_loadedRomInfo);
@@ -646,7 +652,7 @@ void __no_inline_not_in_flash_func(storeCurrentlyRunningSaveGame)() {
   setSsi32bit();
   __compiler_memory_barrier();
 
-  storeSaveRamInFile(&g_loadedRomInfo);
+  storeSaveRamToFile(&g_loadedRomInfo);
 
   ws2812b_setRgb(0, 0x10, 0);
 
