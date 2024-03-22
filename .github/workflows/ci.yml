@@ -4,7 +4,7 @@ name: CI - Build on changes in Docker container
 
 on:
   push:
-    branches: [ "master", "dev" ]
+    branches: [ "master", "dev", "rtc" ]
   pull_request:
     branches: [ "master" ]
 
