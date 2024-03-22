@@ -41,8 +41,7 @@
 #define MENU_SYSTEM_INFO 2
 #define MENU_RGB_TESTER 3
 #define MENU_GAME_SETTINGS 4
-#define MENU_GAME_SETTINGS_SAVEGAMEHOOK 4
-#define MENU_GAME_SETTINGS_RTC 5
+#define MENU_RTC_SETTINGS 5
 
 #define MAX_GAMES_RENDER_NUM 16
 #define CHARS_PER_ROW 20
@@ -69,6 +68,15 @@
 #define COLOR_BLACK 3
 #define COLOR_WHITE 2
 
+struct TimePoint {
+  uint8_t Second;
+  uint8_t Minute;
+  uint8_t Hour;
+  uint8_t Day;
+  uint8_t Month;
+  uint8_t Year; // offset from 1970;
+};
+
 struct SharedGameboyData {
   uint16_t git_sha1_l;
   uint16_t git_sha1_h;
@@ -77,17 +85,9 @@ struct SharedGameboyData {
   uint8_t versionMajor;
   uint8_t versionMinor;
   uint8_t versionPatch;
+  struct TimePoint timePoint;
   uint8_t number_of_roms;
   char rom_names[];
-};
-
-struct CfgRTCReal {
-  uint8_t s;    // seconds 0-59
-  uint8_t m;    // minute 0-59
-  uint8_t h;    // hour   0-23
-  uint8_t d;    // day    0-30
-  uint8_t mon;  // month  0-11
-  uint8_t year; // year   0-255 (+1970) -> 1970-2225
 };
 
 const palette_color_t backgroundpalette[] = {
@@ -107,23 +107,37 @@ static uint8_t gCursor = 0;
 static uint8_t gPageCursor = 0;
 static uint8_t gLastSelectedGame = 0;
 static uint8_t gLastSelectedGamePage = 0;
+static uint8_t gSelectedMode = 0xFF;
 
 static uint8_t gDMGHighlightLine = 0xFF;
 
 struct SharedGameboyData *s_sharedData = (struct SharedGameboyData *)(0xA000);
 #define s_GamesCount s_sharedData->number_of_roms
 
-void sanitizeRTCReal(struct CfgRTCReal *rtc);
+void sanitizeRTCReal(struct TimePoint *rtc);
 
 void startGame(uint8_t game, uint8_t mode);
-void loadRealtimeRTC(struct CfgRTCReal *rtc);
-void storeRealtimeRTC(struct CfgRTCReal *rtc);
+
+uint8_t getRomInfoByteForIndex(uint8_t idx) {
+  char *pRomData = s_sharedData->rom_names;
+  for (uint8_t i = 0; i < s_GamesCount; ++i) {
+    if (i == idx) {
+      return *pRomData;
+    } else {
+      pRomData++;
+    }
+    pRomData += strlen(pRomData) + 1;
+  }
+  return 0;
+}
 
 char *getRomNameForIndex(uint8_t idx) {
   char *pRomNames = s_sharedData->rom_names;
   for (uint8_t i = 0; i < s_GamesCount; ++i) {
-    if (i == idx)
+    pRomNames++;
+    if (i == idx) {
       return pRomNames;
+    }
     pRomNames += strlen(pRomNames) + 1;
   }
   return NULL;
@@ -178,13 +192,16 @@ void renderGamelist(uint8_t first, uint8_t selected) {
   gotoxy(0, 0);
   const char *spacer_selected = selected < 9 ? " " : "";
   const char *spacer_games = s_GamesCount < 9 ? " " : "";
+
+  char *pRomNames = s_sharedData->rom_names;
+
   printf("***  Games %s%d/%s%d ***", spacer_selected, selected + 1,
          spacer_games, s_GamesCount);
-  char *pRomNames = s_sharedData->rom_names;
 
   if (s_GamesCount != 0) {
     // loop through all game titles and display them
-    for (UINT8 i = 0; i < s_GamesCount; ++i) {
+    for (uint8_t i = 0; i < s_GamesCount; ++i) {
+      pRomNames += 1; // first byte of every ROMInfo contains RTC info
       if (i >= first) {
         uint8_t renderIDX = i - first;
         if (renderIDX >= MAX_GAMES_RENDER_NUM)
@@ -266,14 +283,14 @@ uint8_t drawscreenGameMenu(void) {
     gCursor = gLastSelectedGame;
     gPageCursor = gLastSelectedGamePage;
 
-    if (buttonPressed(J_SELECT)) {
-      return MENU_SYSTEM_INFO;
-
-    } else if (buttonPressed(J_START)) {
+    if (buttonPressed(J_START)) {
       return MENU_GAME_SETTINGS;
-
     } else if (buttonPressed(J_A)) {
-      startGame(gCursor, 0xff);
+      if (getRomInfoByteForIndex(gCursor) == 1) {
+        return MENU_RTC_SETTINGS;
+      } else {
+        startGame(gCursor, 0xff);
+      }
     }
 
     moveCursor(s_GamesCount);
@@ -370,15 +387,17 @@ uint8_t drawscreenGameSettingsSavegameHook(void) {
 
   if (buttonPressed(J_B)) {
     return MENU_GAME_MENU;
-
-  } else if (buttonPressed(J_SELECT)) {
-    return MENU_GAME_SETTINGS_RTC;
-
   } else if (buttonPressed(J_START)) {
-    startGame(gLastSelectedGame, gCursor);
+    if (getRomInfoByteForIndex(gLastSelectedGame) == 1) {
+      gSelectedMode = gCursor;
+      return MENU_RTC_SETTINGS;
+    } else {
+      startGame(gLastSelectedGame, gCursor);
+    }
   }
 
   if (gForceDrawScreen) {
+    gSelectedMode = 0xFF;
     drawscreenGameSettingsUI();
     printf("[Savegame Hook]");
     gotoxy(2, 5);
@@ -389,50 +408,35 @@ uint8_t drawscreenGameSettingsSavegameHook(void) {
     printf("Mode 2 (sel + dwn)");
   }
 
-  return MENU_GAME_SETTINGS_SAVEGAMEHOOK;
+  return MENU_GAME_SETTINGS;
 }
 
 uint8_t drawscreenGameSettingsRTC(void) {
   static uint8_t selectionX; // addresses fields from right to left
-  static struct CfgRTCReal real_rtc;
-  static uint8_t *modval = (uint8_t *)&real_rtc;
-  uint8_t rtc_needs_commiting = 0;
+  struct TimePoint *real_rtc = &s_sharedData->timePoint;
+  uint8_t gameStart = 0;
+  uint8_t *modval = (uint8_t *)real_rtc;
 
   if (gForceDrawScreen) {
-    loadRealtimeRTC(&real_rtc);
     selectionX = 1;
-    modval = (uint8_t *)&real_rtc;
   }
 
-  if (buttonPressed(J_SELECT)) {
-    return MENU_GAME_SETTINGS_SAVEGAMEHOOK;
-
-  } else if (buttonPressed(J_B)) {
-
+  if (buttonPressed(J_B)) {
+    return MENU_GAME_MENU;
   } else if (buttonPressed(J_START)) {
-    rtc_needs_commiting = 1;
-    gForceDrawScreen = 1;
+    gameStart = 1;
   } else if (buttonPressed(J_A)) {
-
-    rtc_needs_commiting = 1;
-
     gForceDrawScreen = 1;
   } else if (buttonPressed(J_UP)) {
-
-    modval = (uint8_t *)&real_rtc;
-
     uint8_t oldval = ++modval[selectionX];
-    sanitizeRTCReal(&real_rtc);
+    sanitizeRTCReal(real_rtc);
     if (modval[selectionX] == oldval - 1)
       modval[selectionX] = 0;
 
     gForceDrawScreen = 1;
   } else if (buttonPressed(J_DOWN)) {
-
-    modval = (uint8_t *)&real_rtc;
-
     modval[selectionX]--;
-    sanitizeRTCReal(&real_rtc);
+    sanitizeRTCReal(real_rtc);
 
     gForceDrawScreen = 1;
   } else if (buttonPressed(J_LEFT)) {
@@ -449,8 +453,8 @@ uint8_t drawscreenGameSettingsRTC(void) {
     gForceDrawScreen = 1;
   }
 
-  if (rtc_needs_commiting & 1) {
-    storeRealtimeRTC(&real_rtc);
+  if (gameStart) {
+    startGame(gLastSelectedGame, gSelectedMode);
   }
 
   if (gForceDrawScreen) {
@@ -462,27 +466,19 @@ uint8_t drawscreenGameSettingsRTC(void) {
     gotoxy(1, 11);
     printf("YYYY MM DD HH MM");
     gotoxy(1, 12);
-    printf("%d ", real_rtc.year + 1970);
-    if (real_rtc.mon < 9)
+    printf("%d ", real_rtc->Year + 1970);
+    if (real_rtc->Month < 9)
       putchar('0');
-    printf("%d ", real_rtc.mon + 1);
-    if (real_rtc.d < 9)
+    printf("%d ", real_rtc->Month + 1);
+    if (real_rtc->Day < 9)
       putchar('0');
-    printf("%d ", real_rtc.d + 1);
-    if (real_rtc.h < 10)
+    printf("%d ", real_rtc->Day + 1);
+    if (real_rtc->Hour < 10)
       putchar('0');
-    printf("%d ", real_rtc.h);
-    if (real_rtc.m < 10)
+    printf("%d ", real_rtc->Hour);
+    if (real_rtc->Minute < 10)
       putchar('0');
-    printf("%d ", real_rtc.m);
-
-    gotoxy(1, 15);
-    if (rtc_needs_commiting) {
-      printf("[RTC config saved]");
-    } else {
-      for (uint8_t i = 0; i < 18; i++)
-        putchar(' ');
-    }
+    printf("%d ", real_rtc->Minute);
 
     resetHighlights();
 
@@ -494,7 +490,7 @@ uint8_t drawscreenGameSettingsRTC(void) {
     }
   }
 
-  return MENU_GAME_SETTINGS_RTC;
+  return MENU_RTC_SETTINGS;
 }
 
 void drawscreen(void) {
@@ -502,11 +498,11 @@ void drawscreen(void) {
   uint8_t nextScreen = 0;
 
   switch (curScreen) {
-  case MENU_GAME_SETTINGS_SAVEGAMEHOOK:
+  case MENU_GAME_SETTINGS:
     nextScreen = drawscreenGameSettingsSavegameHook();
     break;
 
-  case MENU_GAME_SETTINGS_RTC:
+  case MENU_RTC_SETTINGS:
     nextScreen = drawscreenGameSettingsRTC();
     break;
 
@@ -592,13 +588,13 @@ void main(void) {
   } // endless while
 }
 
-void sanitizeRTCReal(struct CfgRTCReal *rtc) {
-  if (rtc->mon > 11)
-    rtc->mon = 11;
+void sanitizeRTCReal(struct TimePoint *rtc) {
+  if (rtc->Month > 11)
+    rtc->Month = 11;
 
   uint8_t maxDay;
-  if (rtc->mon == 1) {
-    uint16_t year = 1970 + rtc->year;
+  if (rtc->Month == 1) {
+    uint16_t year = 1970 + rtc->Year;
     if ((year & 3) == 0) {
       // divisible by 4
       if ((year % 100) == 0) {
@@ -617,18 +613,18 @@ void sanitizeRTCReal(struct CfgRTCReal *rtc) {
       // not leap year
       maxDay = 27;
     }
-  } else if (((rtc->mon < 7) && (rtc->mon & 1)) ||
-             ((rtc->mon >= 7) && (rtc->mon & 1) == 0)) {
+  } else if (((rtc->Month < 7) && (rtc->Month & 1)) ||
+             ((rtc->Month >= 7) && (rtc->Month & 1) == 0)) {
     maxDay = 29;
   } else {
     maxDay = 30;
   }
-  if (rtc->d > maxDay)
-    rtc->d = maxDay;
-  if (rtc->h > 23)
-    rtc->h = 23;
-  if (rtc->m > 59)
-    rtc->m = 59;
+  if (rtc->Day > maxDay)
+    rtc->Day = maxDay;
+  if (rtc->Hour > 23)
+    rtc->Hour = 23;
+  if (rtc->Minute > 59)
+    rtc->Minute = 59;
 }
 
 void startGame(uint8_t game, uint8_t mode) {
@@ -639,19 +635,4 @@ void startGame(uint8_t game, uint8_t mode) {
   while (1) {
     vsync();
   }
-}
-
-void loadRealtimeRTC(struct CfgRTCReal *rtc) {
-#warning TODO: read this from rp2040
-  rtc->m = 56;
-  rtc->h = 17;
-  rtc->d = 7;
-  rtc->mon = 2;
-  rtc->year = 54;
-  sanitizeRTCReal(rtc);
-}
-
-void storeRealtimeRTC(struct CfgRTCReal *rtc) {
-#warning TODO: write this from rp2040
-  (void)rtc;
 }

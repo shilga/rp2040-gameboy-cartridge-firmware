@@ -4,6 +4,17 @@
 
 #include <hardware/timer.h>
 
+#define SECS_PER_MIN 60UL
+#define SECS_PER_HOUR 3600UL
+#define SECS_PER_DAY (SECS_PER_HOUR * 24UL)
+#define SECS_PER_YEAR (SECS_PER_DAY * 365UL)
+#define SECS_YR_2000 946684800UL /* the time at the start of y2k */
+
+// leap year calculator expects year argument as years offset from 1970
+#define LEAP_YEAR(Y)                                                           \
+  (((1970 + (Y)) > 0) && !((1970 + (Y)) % 4) &&                                \
+   (((1970 + (Y)) % 100) || !((1970 + (Y)) % 400)))
+
 static volatile uint8_t _registerMasks[] = {0x3f, 0x3f, 0x1f, 0xff, 0xc1};
 static uint8_t _currentRegister = 0;
 
@@ -105,9 +116,95 @@ void GbRtc_advanceToNewTimestamp(uint64_t newTimestamp) {
 
     while (diff > 0) {
       GbRtc_processTick();
-      diff++;
+      diff--;
+    }
+  }
+
+  g_rtcTimestamp = newTimestamp;
+
+  _millies = 0;
+}
+
+static const uint8_t monthDays[] = {31, 28, 31, 30, 31, 30,
+                                    31, 31, 30, 31, 30, 31};
+
+// taken from https://github.com/PaulStoffregen/Time/blob/master/Time.cpp
+uint64_t makeTime(const struct TimePoint *tp) {
+  // note year argument is offset from 1970 (see macros in time.h to convert to
+  // other formats)
+  int i;
+  uint64_t seconds;
+
+  // seconds from 1970 till 1 jan 00:00:00 of the given year
+  seconds = tp->Year * (SECS_PER_DAY * 365);
+  for (i = 0; i < tp->Year; i++) {
+    if (LEAP_YEAR(i)) {
+      seconds += SECS_PER_DAY; // add extra days for leap years
+    }
+  }
+
+  // add days for this year, months start from 1
+  for (i = 0; i < tp->Month; i++) {
+    if ((i == 1) && LEAP_YEAR(tp->Year)) {
+      seconds += SECS_PER_DAY * 29;
+    } else {
+      seconds += SECS_PER_DAY * monthDays[i];
+    }
+  }
+  seconds += (tp->Day) * SECS_PER_DAY;
+  seconds += tp->Hour * SECS_PER_HOUR;
+  seconds += tp->Minute * SECS_PER_MIN;
+  seconds += tp->Second;
+  return seconds;
+}
+void breakTime(uint64_t timeInput, struct TimePoint *tp) {
+  // break the given timestamp into components
+  // this is a more compact version of the C library localtime function
+  // note that year is offset from 1970 !!!
+
+  uint8_t year;
+  uint8_t month, monthLength;
+  uint32_t time;
+  unsigned long days;
+
+  time = (uint32_t)timeInput;
+  tp->Second = time % 60;
+  time /= 60; // now it is minutes
+  tp->Minute = time % 60;
+  time /= 60; // now it is hours
+  tp->Hour = time % 24;
+  time /= 24; // now it is days
+
+  year = 0;
+  days = 0;
+  while ((unsigned)(days += (LEAP_YEAR(year) ? 366 : 365)) <= time) {
+    year++;
+  }
+  tp->Year = year; // year is offset from 1970
+
+  days -= LEAP_YEAR(year) ? 366 : 365;
+  time -= days; // now it is days in this year, starting at 0
+
+  days = 0;
+  month = 0;
+  monthLength = 0;
+  for (month = 0; month < 12; month++) {
+    if (month == 1) { // february
+      if (LEAP_YEAR(year)) {
+        monthLength = 29;
+      } else {
+        monthLength = 28;
+      }
+    } else {
+      monthLength = monthDays[month];
     }
 
-    _millies = 0;
+    if (time >= monthLength) {
+      time -= monthLength;
+    } else {
+      break;
+    }
   }
+  tp->Month = month;
+  tp->Day = time;
 }

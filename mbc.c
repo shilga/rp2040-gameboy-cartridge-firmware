@@ -106,7 +106,6 @@ void loadGame(uint8_t mode) {
 
   if (_hasRtc) {
     restoreRtcFromFile(&g_loadedRomInfo);
-    GbRtc_advanceToNewTimestamp(RP2040_GB_CARTRIDGE_BUILD_TIMESTAMP);
   }
 
   if (g_loadedRomInfo.numRamBanks > 0) {
