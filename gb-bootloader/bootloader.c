@@ -258,6 +258,10 @@ void moveCursor(uint8_t limit) {
 }
 
 uint8_t drawscreenGameMenu(void) {
+  if (buttonPressed(J_SELECT)) {
+    return MENU_SYSTEM_INFO;
+  }
+
   if (s_GamesCount) {
     gCursor = gLastSelectedGame;
     gPageCursor = gLastSelectedGamePage;
