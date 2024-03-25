@@ -426,12 +426,13 @@ uint8_t drawscreenGameSettingsRTC(void) {
   } else if (buttonPressed(J_START)) {
     gameStart = 1;
   } else if (buttonPressed(J_A)) {
-    gForceDrawScreen = 1;
+    gameStart = 1;
   } else if (buttonPressed(J_UP)) {
     uint8_t oldval = ++modval[selectionX];
     sanitizeRTCReal(real_rtc);
-    if (modval[selectionX] == oldval - 1)
+    if (modval[selectionX] == oldval - 1) {
       modval[selectionX] = 0;
+    }
 
     gForceDrawScreen = 1;
   } else if (buttonPressed(J_DOWN)) {
