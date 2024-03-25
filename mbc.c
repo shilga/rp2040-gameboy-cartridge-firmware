@@ -419,6 +419,9 @@ void __no_inline_not_in_flash_func(runMbc3Game)() {
             }
           } else {
             ram_base = &ram_memory[(ram_bank & 0x03) * GB_RAM_BANK_SIZE];
+            if (ram_enabled) {
+              GbDma_EnableSaveRam();
+            }
           }
         }
       } else { // read
