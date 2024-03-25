@@ -20,7 +20,6 @@
 #include "GbRtc.h"
 #include "GlobalDefines.h"
 #include "ws2812b_spi.h"
-#include "BuildVersion.h"
 
 #include <assert.h>
 #include <stdbool.h>
@@ -206,9 +205,8 @@ void __no_inline_not_in_flash_func(runMbc1Game)() {
   uint8_t rom_bank_new = 1;
   uint8_t rom_bank_high = 0;
   uint8_t rom_bank_low = 1;
-  uint8_t ram_bank = GB_MAX_RAM_BANKS;
+  uint8_t ram_bank = 0;
   uint8_t ram_bank_new = 0;
-  uint8_t ram_bank_local = GB_MAX_RAM_BANKS;
   bool ram_enabled = 0;
   bool new_ram_enabled = 0;
   bool mode_select = 0;
@@ -259,7 +257,7 @@ void __no_inline_not_in_flash_func(runMbc1Game)() {
           mode_select = (data & 1);
           break;
         case 0xA000: // write to RAM
-          if (!_ramDirty) {
+          if (!_ramDirty && ram_enabled) {
             ws2812b_setRgb(0x10, 0, 0); // switch on LED to red
             _ramDirty = true;
           }
@@ -283,12 +281,15 @@ void __no_inline_not_in_flash_func(runMbc1Game)() {
 
         if (ram_enabled != new_ram_enabled) {
           ram_enabled = new_ram_enabled;
+          if (ram_enabled) {
+            GbDma_EnableSaveRam();
+          } else {
+            GbDma_DisableSaveRam();
+          }
         }
 
-        ram_bank_local = ram_enabled ? ram_bank_new : GB_MAX_RAM_BANKS;
-
-        if (ram_bank != ram_bank_local) {
-          ram_bank = ram_bank_local;
+        if (ram_bank != ram_bank_new) {
+          ram_bank = ram_bank_new;
           ram_base = &ram_memory[ram_bank * GB_RAM_BANK_SIZE];
         }
       } else { // read
@@ -361,7 +362,6 @@ void __no_inline_not_in_flash_func(runMbc3Game)() {
           break;
 
         case 0x6000:
-          ws2812b_setRgb(0x10, 0x10, 0x10);
           if (data) {
             if (!rtcLatch) {
               rtcLatch = true;
@@ -377,7 +377,7 @@ void __no_inline_not_in_flash_func(runMbc3Game)() {
             if (ram_bank & 0x08) {
               GbRtc_WriteRegister(data);
             } else if (!_ramDirty) {
-              // ws2812b_setRgb(0x10, 0, 0); // switch on LED to red
+              ws2812b_setRgb(0x10, 0, 0); // switch on LED to red
               _ramDirty = true;
             }
           }
@@ -399,10 +399,8 @@ void __no_inline_not_in_flash_func(runMbc3Game)() {
           if (ram_enabled) {
             if (ram_bank & 0x08) {
               GbDma_EnableRtc();
-              ws2812b_setRgb(0, 0x10, 0x10);
             } else {
               GbDma_EnableSaveRam();
-              // ws2812b_setRgb(0, 0, 0x10);
             }
           } else {
             GbDma_DisableSaveRam();
@@ -415,7 +413,6 @@ void __no_inline_not_in_flash_func(runMbc3Game)() {
             GbRtc_ActivateRegister(ram_bank & 0x07);
             if (ram_enabled) {
               GbDma_EnableRtc();
-              ws2812b_setRgb(0, 0x10, 0x10);
             }
           } else {
             ram_base = &ram_memory[(ram_bank & 0x03) * GB_RAM_BANK_SIZE];
@@ -439,9 +436,8 @@ void __no_inline_not_in_flash_func(runMbc3Game)() {
 void __no_inline_not_in_flash_func(runMbc5Game)() {
   uint16_t rom_bank = 1;
   uint16_t rom_bank_new = 1;
-  uint8_t ram_bank = GB_MAX_RAM_BANKS;
+  uint8_t ram_bank = 0;
   uint8_t ram_bank_new = 0;
-  uint8_t ram_bank_local = GB_MAX_RAM_BANKS;
   bool ram_enabled = 0;
   bool new_ram_enabled = 0;
   const uint16_t rom_banks_mask = _numRomBanks - 1;
@@ -499,7 +495,7 @@ void __no_inline_not_in_flash_func(runMbc5Game)() {
 
           break;
         case 0xA000: // write to RAM
-          if (!_ramDirty) {
+          if (!_ramDirty && ram_enabled) {
             ws2812b_setRgb(0x10, 0, 0); // switch on LED to red
             _ramDirty = true;
           }
@@ -519,12 +515,15 @@ void __no_inline_not_in_flash_func(runMbc5Game)() {
 
         if (ram_enabled != new_ram_enabled) {
           ram_enabled = new_ram_enabled;
+          if (ram_enabled) {
+            GbDma_EnableSaveRam();
+          } else {
+            GbDma_DisableSaveRam();
+          }
         }
 
-        ram_bank_local = ram_enabled ? ram_bank_new : GB_MAX_RAM_BANKS;
-
-        if (ram_bank != ram_bank_local) {
-          ram_bank = ram_bank_local;
+        if (ram_bank != ram_bank_new) {
+          ram_bank = ram_bank_new;
           ram_base = &ram_memory[ram_bank * GB_RAM_BANK_SIZE];
         }
       } else { // read

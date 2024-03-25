@@ -72,7 +72,7 @@ uint8_t memory[GB_ROM_BANK_SIZE * 3] __attribute__((aligned(GB_ROM_BANK_SIZE)));
 uint8_t memory_vblank_hook_bank[0x200] __attribute__((aligned(0x200)));
 uint8_t memory_vblank_hook_bank2[0x200] __attribute__((aligned(0x200)));
 uint8_t __attribute__((section(".noinit_gb_ram.")))
-ram_memory[(GB_MAX_RAM_BANKS + 1) * GB_RAM_BANK_SIZE]
+ram_memory[GB_MAX_RAM_BANKS * GB_RAM_BANK_SIZE]
     __attribute__((aligned(GB_RAM_BANK_SIZE)));
 
 volatile union GbRtcUnion __attribute__((section(".noinit."))) g_rtcReal;
@@ -294,8 +294,7 @@ struct __attribute__((packed)) SharedGameboyData {
 
 void __no_inline_not_in_flash_func(runGbBootloader)(uint8_t *selectedGame,
                                                     uint8_t *selectedGameMode) {
-  // use spare RAM bank to not overwrite potential save
-  uint8_t *ram = &ram_memory[GB_MAX_RAM_BANKS * GB_RAM_BANK_SIZE];
+  uint8_t *ram = &ram_memory[0];
   struct SharedGameboyData *shared_data = (void *)ram;
 
   *selectedGame = 0xFF;
