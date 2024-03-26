@@ -105,6 +105,7 @@ void loadGame(uint8_t mode) {
 
   if (_hasRtc) {
     restoreRtcFromFile(&g_loadedRomInfo);
+    GbRtc_advanceToNewTimestamp(g_globalTimestamp);
   }
 
   if (g_loadedRomInfo.numRamBanks > 0) {

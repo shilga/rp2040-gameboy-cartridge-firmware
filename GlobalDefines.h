@@ -81,7 +81,7 @@ void setSsi32bit();
 void loadDoubleSpeedPio();
 void storeSaveRamToFile(const struct RomInfo *shortRomInfo);
 void restoreSaveRamFromFile(const struct RomInfo *shortRomInfo);
-void restoreRtcFromFile(const struct RomInfo *romInfo);
+int restoreRtcFromFile(const struct RomInfo *romInfo);
 void storeRtcToFile(const struct RomInfo *romInfo);
 
 struct __attribute__((packed)) GbRtc {
@@ -107,6 +107,7 @@ union GbRtcUnion {
 extern volatile union GbRtcUnion g_rtcReal;
 extern volatile union GbRtcUnion g_rtcLatched;
 extern uint64_t g_rtcTimestamp;
+extern uint64_t g_globalTimestamp;
 
 /* taken from
  * https://github.com/tihmstar/libgeneral/blob/master/include/libgeneral/macros.h.in

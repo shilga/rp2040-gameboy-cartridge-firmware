@@ -82,6 +82,7 @@ uint64_t __attribute__((section(".noinit."))) g_rtcTimestamp;
 uint8_t g_numRoms = 0;
 const uint8_t *g_loadedRomBanks[MAX_BANKS_PER_ROM];
 uint32_t g_loadedDirectAccessRomBanks[MAX_BANKS_PER_ROM];
+uint64_t g_globalTimestamp = RP2040_GB_CARTRIDGE_BUILD_TIMESTAMP;
 
 struct RomInfo __attribute__((section(".noinit."))) g_loadedRomInfo;
 
@@ -95,8 +96,6 @@ static uint _offset_main;
 static uint _offset_write_data;
 static uint16_t _mainStateMachineCopy
     [sizeof(gameboy_bus_double_speed_program_instructions) / sizeof(uint16_t)];
-
-static uint64_t _globalTimestamp = RP2040_GB_CARTRIDGE_BUILD_TIMESTAMP;
 
 void runGbBootloader(uint8_t *selectedGame, uint8_t *selectedGameMode);
 void loadLastTimestampFromFile(uint64_t *ts);
@@ -250,13 +249,13 @@ int main() {
 
     _lastRunningGame = 0xFF;
 
-    _globalTimestamp = g_rtcTimestamp;
+    g_globalTimestamp = g_rtcTimestamp;
   } else {
     uint64_t t = 0;
     loadLastTimestampFromFile(&t);
 
-    if (t > _globalTimestamp) {
-      _globalTimestamp = t;
+    if (t > g_globalTimestamp) {
+      g_globalTimestamp = t;
     }
   }
 
@@ -310,7 +309,7 @@ void __no_inline_not_in_flash_func(runGbBootloader)(uint8_t *selectedGame,
   shared_data->versionMinor = RP2040_GB_CARTRIDGE_VERSION_MINOR;
   shared_data->versionPatch = RP2040_GB_CARTRIDGE_VERSION_PATCH;
 
-  breakTime(_globalTimestamp, &shared_data->timePoint);
+  breakTime(g_globalTimestamp, &shared_data->timePoint);
 
   // initialize RAM with information about roms
   {
@@ -378,7 +377,7 @@ void __no_inline_not_in_flash_func(runGbBootloader)(uint8_t *selectedGame,
 
   usb_shutdown();
 
-  _globalTimestamp = makeTime(&shared_data->timePoint);
+  g_globalTimestamp = makeTime(&shared_data->timePoint);
 
   // hold the gameboy in reset until we have loaded the game
   gpio_put(PIN_GB_RESET, 1);
@@ -510,7 +509,7 @@ void storeSaveRamToFile(const struct RomInfo *romInfo) {
   ws2812b_setRgb(0, 0x10, 0); // light up LED in green
 }
 
-void restoreRtcFromFile(const struct RomInfo *romInfo) {
+int restoreRtcFromFile(const struct RomInfo *romInfo) {
   lfs_file_t file;
   struct lfs_file_config fileconfig = {.buffer = _lfsFileBuffer};
   char filenamebuffer[40] = "rtc/";
@@ -520,22 +519,26 @@ void restoreRtcFromFile(const struct RomInfo *romInfo) {
   int lfs_err =
       lfs_file_opencfg(&_lfs, &file, filenamebuffer, LFS_O_RDONLY, &fileconfig);
 
-  if (lfs_err == LFS_ERR_OK) {
-    printf("found rtc at %s\n", filenamebuffer);
-
-    lfs_err = lfs_file_read(&_lfs, &file, (uint8_t *)&g_rtcReal.asArray[0],
-                            sizeof(struct GbRtc));
-    lfs_err += lfs_file_read(&_lfs, &file, (uint8_t *)&g_rtcLatched.asArray[0],
-                             sizeof(struct GbRtc));
-    lfs_err += lfs_file_read(&_lfs, &file, &g_rtcTimestamp, sizeof(uint64_t));
-    printf("read %d bytes\n", lfs_err);
-
-    if (lfs_err >= 0) {
-      lfs_file_close(&_lfs, &file);
-    }
+  if (lfs_err != LFS_ERR_OK) {
+    return -1;
   }
 
-  GbRtc_advanceToNewTimestamp(_globalTimestamp);
+  printf("found rtc at %s\n", filenamebuffer);
+
+  lfs_err = lfs_file_read(&_lfs, &file, (uint8_t *)&g_rtcReal.asArray[0],
+                          sizeof(struct GbRtc));
+  lfs_err += lfs_file_read(&_lfs, &file, (uint8_t *)&g_rtcLatched.asArray[0],
+                           sizeof(struct GbRtc));
+  lfs_err += lfs_file_read(&_lfs, &file, &g_rtcTimestamp, sizeof(uint64_t));
+  printf("read %d bytes\n", lfs_err);
+
+  lfs_file_close(&_lfs, &file);
+
+  if (lfs_err != (sizeof(struct GbRtc) * 2) + sizeof(uint64_t)) {
+    return -2;
+  }
+
+  return 0;
 }
 
 void storeRtcToFile(const struct RomInfo *romInfo) {
@@ -554,7 +557,6 @@ void storeRtcToFile(const struct RomInfo *romInfo) {
   if (lfs_err != LFS_ERR_OK) {
     printf("Error opening file %d\n", lfs_err);
   } else {
-
     lfs_err = lfs_file_write(&_lfs, &file, (uint8_t *)&g_rtcReal.asArray[0],
                              sizeof(struct GbRtc));
     lfs_err += lfs_file_write(&_lfs, &file, (uint8_t *)&g_rtcLatched.asArray[0],
@@ -566,7 +568,10 @@ void storeRtcToFile(const struct RomInfo *romInfo) {
     lfs_file_close(&_lfs, &file);
   }
 
-  storeLastTimestampToFile(&g_rtcTimestamp);
+  if(g_rtcTimestamp > g_globalTimestamp)
+  {
+    storeLastTimestampToFile(&g_rtcTimestamp);
+  }
 }
 
 void loadLastTimestampFromFile(uint64_t *ts) {
