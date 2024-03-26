@@ -654,6 +654,10 @@ void __no_inline_not_in_flash_func(storeCurrentlyRunningSaveGame)() {
   __compiler_memory_barrier();
 
   storeSaveRamToFile(&g_loadedRomInfo);
+  if(_hasRtc)
+  {
+    storeRtcToFile(&g_loadedRomInfo);
+  }
 
   ws2812b_setRgb(0, 0x10, 0);
 
