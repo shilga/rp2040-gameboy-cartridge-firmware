@@ -28,8 +28,8 @@
 #include <gbdk/font.h>
 #include <gbdk/platform.h>
 
-#include "giraffe_4color_data.c"
-#include "giraffe_4color_map.c"
+#include "giraffe_4color_data.h"
+#include "giraffe_4color_map.h"
 
 #ifdef DMG_TEST_MODE_ON_CBG
 #define DEVICE_SUPPORTS_COLOR (0)
@@ -57,9 +57,9 @@
 #define SMEM_GAME_START_MAGIC 42
 
 #define DMG_BKG_SELECTED_PALETTE                                               \
-  DMG_PALETTE(DMG_DARK_GRAY, DMG_LITE_GRAY, DMG_BLACK, DMG_WHITE);
+  DMG_PALETTE(DMG_BLACK, DMG_LITE_GRAY, DMG_DARK_GRAY, DMG_WHITE);
 #define DMG_BKG_NORMAL_PALETTE                                                 \
-  DMG_PALETTE(DMG_DARK_GRAY, DMG_LITE_GRAY, DMG_WHITE, DMG_BLACK);
+  DMG_PALETTE(DMG_WHITE, DMG_LITE_GRAY, DMG_DARK_GRAY, DMG_BLACK);
 #define DMG_TILE_NORMAL_PALETTE                                                \
   DMG_PALETTE(DMG_WHITE, DMG_DARK_GRAY, DMG_LITE_GRAY, DMG_BLACK);
 #define DMG_TILE_SELECTED_PALETTE                                              \
@@ -91,8 +91,8 @@ struct SharedGameboyData {
 };
 
 const palette_color_t backgroundpalette[] = {
-    RGB_BROWN, RGB_YELLOW, RGB_WHITE, RGB_BLACK,
-    RGB_BROWN, RGB_YELLOW, RGB_BLACK, RGB_WHITE,
+    RGB_WHITE, RGB_YELLOW, RGB_BROWN, RGB_BLACK,
+    RGB_BLACK, RGB_YELLOW, RGB_BROWN, RGB_WHITE,
 };
 
 const palette_color_t spritepalette[] = {
@@ -565,18 +565,24 @@ void main(void) {
   }
 
   font_init();
-  font_color(COLOR_BLACK, COLOR_WHITE);
+  // use pallete 2 as background as sprites have transparent background
+  font_color(3, 2);
   font_t curFont = font_load(font_ibm);
-  font_set(curFont);
-
-  mode(M_TEXT_OUT | M_NO_SCROLL);
-
   {
     uint8_t fontData[102 * 16];
     get_bkg_data(0, 102, fontData);
     set_sprite_data(0, 102, fontData);
   }
   SHOW_SPRITES;
+
+  font_init();
+  font_color(3, 0); // use std pallete 0 as background
+  curFont = font_load(font_ibm);
+  font_set(curFont);
+
+  mode(M_TEXT_OUT | M_NO_SCROLL);
+
+  set_bkg_data(102, 70, giraffe_4color_data);
 
   DISPLAY_ON;
 
