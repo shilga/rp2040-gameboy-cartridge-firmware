@@ -68,8 +68,9 @@ unused, the first core is only switching banks while a Gameboy game is running. 
 Yes. 128k saves are supported. With the newest releases it also runs on the GBC.
 
 ## How can I get the needed hardware?
-Find the Kicad project files in this [repo](https://github.com/shilga/rp2040-gameboy-cartridge). Or order one on [Tindie](https://www.tindie.com/products/32710/).
-
+Find the Kicad project files in this [repo](https://github.com/shilga/rp2040-gameboy-cartridge). You can also order a pre-build cartridge over at 
+[RetroReiZ](https://retroreiz.de/shop/retro-emulators/handhelds/croco-cartridge-multi-flashcartridge-fuer-gameboy-classic-color-roms/) who offer a 
+lot of other useful Gameboy mods. You can also get one from [Tindie](https://www.tindie.com/products/32710/).
 
 ## Discord
 Find the Discord server to get help or discuss about this project. <https://discord.com/invite/jxGfqw2mdt>
