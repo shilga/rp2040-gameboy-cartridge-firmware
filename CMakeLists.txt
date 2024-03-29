@@ -8,6 +8,8 @@ else ()
 endif()
 message("BUILD_TIME_PROVIDED_VERSION=${BUILD_TIME_PROVIDED_VERSION} BUILD_VERSION_TYPE=${BUILD_VERSION_TYPE}")
 
+string(TIMESTAMP BUILD_TIMESTAMP "%s" UTC)
+
 include($ENV{PICO_SDK_PATH}/external/pico_sdk_import.cmake)
 
 project(rp2040-gb-cartridge C CXX ASM)
@@ -37,6 +39,7 @@ add_subdirectory(libs/git-commit-tracking)
 add_executable(${PROJECT_NAME} 
     main.c
     GbDma.c
+    GbRtc.c
     mbc.c
     webusb.c
     usb_descriptors.c
@@ -56,7 +59,15 @@ pico_enable_stdio_uart(${PROJECT_NAME} 1)
 # pico_set_printf_implementation(${PROJECT_NAME} none)
 pico_set_linker_script(${PROJECT_NAME} ${CMAKE_CURRENT_LIST_DIR}/linkerscript.ld)
 
+#Target that removes the CMake variable BUILD_TIMESTAMP from cache.
+#this forces CMake to rerun.
+add_custom_target(
+	clear_cache
+	COMMAND ${CMAKE_COMMAND} -U BUILD_TIMESTAMP ${CMAKE_BINARY_DIR}
+)
+
 add_dependencies(${PROJECT_NAME}
+    clear_cache
     BootloaderGb
     gbSaveGameVBlankHook
     )

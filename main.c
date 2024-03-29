@@ -47,6 +47,8 @@
 #include <git_commit.h>
 
 #include "BuildVersion.h"
+#include "GameBoyHeader.h"
+#include "GbRtc.h"
 #include "gb-bootloader/gbbootloader.h"
 
 #include "BuildVersion.h"
@@ -63,16 +65,24 @@ const volatile uint8_t *volatile ram_base = NULL;
 const volatile uint8_t *volatile rom_low_base = NULL;
 volatile uint32_t rom_high_base_flash_direct = 0;
 
+volatile uint8_t *_rtcLatchPtr = &g_rtcLatched.reg.seconds;
+volatile uint8_t *_rtcRealPtr = &g_rtcReal.reg.seconds;
+
 uint8_t memory[GB_ROM_BANK_SIZE * 3] __attribute__((aligned(GB_ROM_BANK_SIZE)));
 uint8_t memory_vblank_hook_bank[0x200] __attribute__((aligned(0x200)));
 uint8_t memory_vblank_hook_bank2[0x200] __attribute__((aligned(0x200)));
 uint8_t __attribute__((section(".noinit_gb_ram.")))
-ram_memory[(GB_MAX_RAM_BANKS + 1) * GB_RAM_BANK_SIZE]
+ram_memory[GB_MAX_RAM_BANKS * GB_RAM_BANK_SIZE]
     __attribute__((aligned(GB_RAM_BANK_SIZE)));
+
+volatile union GbRtcUnion __attribute__((section(".noinit."))) g_rtcReal;
+volatile union GbRtcUnion __attribute__((section(".noinit."))) g_rtcLatched;
+uint64_t __attribute__((section(".noinit."))) g_rtcTimestamp;
 
 uint8_t g_numRoms = 0;
 const uint8_t *g_loadedRomBanks[MAX_BANKS_PER_ROM];
 uint32_t g_loadedDirectAccessRomBanks[MAX_BANKS_PER_ROM];
+uint64_t g_globalTimestamp = RP2040_GB_CARTRIDGE_BUILD_TIMESTAMP;
 
 struct RomInfo __attribute__((section(".noinit."))) g_loadedRomInfo;
 
@@ -88,6 +98,8 @@ static uint16_t _mainStateMachineCopy
     [sizeof(gameboy_bus_double_speed_program_instructions) / sizeof(uint16_t)];
 
 void runGbBootloader(uint8_t *selectedGame, uint8_t *selectedGameMode);
+void loadLastTimestampFromFile(uint64_t *ts);
+void storeLastTimestampToFile(const uint64_t *ts);
 
 int main() {
   // bi_decl(bi_program_description("Sample binary"));
@@ -193,6 +205,8 @@ int main() {
   if (_noInitTest != 0xcafeaffe) {
     _noInitTest = 0xcafeaffe;
     _lastRunningGame = 0xFF;
+    memset((void *)&g_rtcLatched, 0, sizeof(g_rtcLatched));
+    memset((void *)&g_rtcReal, 0, sizeof(g_rtcLatched));
     printf("NoInit initialized\n");
   }
 
@@ -215,16 +229,33 @@ int main() {
   if ((lfs_err != LFS_ERR_OK) && (lfs_err != LFS_ERR_EXIST)) {
     printf("Error creating saves directory %d\n", lfs_err);
   }
+  lfs_err = lfs_mkdir(&_lfs, "/rtc");
+  if ((lfs_err != LFS_ERR_OK) && (lfs_err != LFS_ERR_EXIST)) {
+    printf("Error creating rtc directory %d\n", lfs_err);
+  }
 
   RomStorage_init(&_lfs);
 
   if (_lastRunningGame < g_numRoms) {
     printf("Game %d was running before reset\n", _lastRunningGame);
 
-    if (g_loadedRomInfo.numRamBanks > 0) {
-      storeSaveRamInFile(&g_loadedRomInfo);
+    if (GameBoyHeader_hasRtc(g_loadedRomInfo.firstBank)) {
+      storeRtcToFile(&g_loadedRomInfo);
+    }
 
-      _lastRunningGame = 0xFF;
+    if (g_loadedRomInfo.numRamBanks > 0) {
+      storeSaveRamToFile(&g_loadedRomInfo);
+    }
+
+    _lastRunningGame = 0xFF;
+
+    g_globalTimestamp = g_rtcTimestamp;
+  } else {
+    uint64_t t = 0;
+    loadLastTimestampFromFile(&t);
+
+    if (t > g_globalTimestamp) {
+      g_globalTimestamp = t;
     }
   }
 
@@ -255,14 +286,14 @@ struct __attribute__((packed)) SharedGameboyData {
   uint8_t versionMajor;
   uint8_t versionMinor;
   uint8_t versionPatch;
+  struct TimePoint timePoint;
   uint8_t number_of_roms;
-  char rom_names[];
+  char romInfo[];
 };
 
 void __no_inline_not_in_flash_func(runGbBootloader)(uint8_t *selectedGame,
                                                     uint8_t *selectedGameMode) {
-  // use spare RAM bank to not overwrite potential save
-  uint8_t *ram = &ram_memory[GB_MAX_RAM_BANKS * GB_RAM_BANK_SIZE];
+  uint8_t *ram = &ram_memory[0];
   struct SharedGameboyData *shared_data = (void *)ram;
 
   *selectedGame = 0xFF;
@@ -278,14 +309,18 @@ void __no_inline_not_in_flash_func(runGbBootloader)(uint8_t *selectedGame,
   shared_data->versionMinor = RP2040_GB_CARTRIDGE_VERSION_MINOR;
   shared_data->versionPatch = RP2040_GB_CARTRIDGE_VERSION_PATCH;
 
+  breakTime(g_globalTimestamp, &shared_data->timePoint);
+
   // initialize RAM with information about roms
   {
-    char *pRomNames = shared_data->rom_names;
+    char *pRomData = shared_data->romInfo;
     for (size_t i = 0; i < g_numRoms; i++) {
       struct RomInfo romInfo = {};
       RomStorage_loadRomInfo(i, &romInfo);
-      strcpy(pRomNames, romInfo.name);
-      pRomNames += strlen(pRomNames) + 1;
+      *(uint8_t *)pRomData = GameBoyHeader_hasRtc(romInfo.firstBank) ? 1 : 0;
+      pRomData++;
+      strcpy(pRomData, romInfo.name);
+      pRomData += strlen(romInfo.name) + 1;
     }
   }
   shared_data->number_of_roms = g_numRoms;
@@ -341,6 +376,8 @@ void __no_inline_not_in_flash_func(runGbBootloader)(uint8_t *selectedGame,
   }
 
   usb_shutdown();
+
+  g_globalTimestamp = makeTime(&shared_data->timePoint);
 
   // hold the gameboy in reset until we have loaded the game
   gpio_put(PIN_GB_RESET, 1);
@@ -447,7 +484,7 @@ void restoreSaveRamFromFile(const struct RomInfo *romInfo) {
   }
 }
 
-void storeSaveRamInFile(const struct RomInfo *romInfo) {
+void storeSaveRamToFile(const struct RomInfo *romInfo) {
   lfs_file_t file;
   int lfs_err;
   struct lfs_file_config fileconfig = {.buffer = _lfsFileBuffer};
@@ -470,4 +507,99 @@ void storeSaveRamInFile(const struct RomInfo *romInfo) {
   lfs_file_close(&_lfs, &file);
 
   ws2812b_setRgb(0, 0x10, 0); // light up LED in green
+}
+
+int restoreRtcFromFile(const struct RomInfo *romInfo) {
+  lfs_file_t file;
+  struct lfs_file_config fileconfig = {.buffer = _lfsFileBuffer};
+  char filenamebuffer[40] = "rtc/";
+
+  strcpy(&filenamebuffer[strlen(filenamebuffer)], romInfo->name);
+
+  int lfs_err =
+      lfs_file_opencfg(&_lfs, &file, filenamebuffer, LFS_O_RDONLY, &fileconfig);
+
+  if (lfs_err != LFS_ERR_OK) {
+    return -1;
+  }
+
+  printf("found rtc at %s\n", filenamebuffer);
+
+  lfs_err = lfs_file_read(&_lfs, &file, (uint8_t *)&g_rtcReal.asArray[0],
+                          sizeof(struct GbRtc));
+  lfs_err += lfs_file_read(&_lfs, &file, (uint8_t *)&g_rtcLatched.asArray[0],
+                           sizeof(struct GbRtc));
+  lfs_err += lfs_file_read(&_lfs, &file, &g_rtcTimestamp, sizeof(uint64_t));
+  printf("read %d bytes\n", lfs_err);
+
+  lfs_file_close(&_lfs, &file);
+
+  if (lfs_err != (sizeof(struct GbRtc) * 2) + sizeof(uint64_t)) {
+    return -2;
+  }
+
+  return 0;
+}
+
+void storeRtcToFile(const struct RomInfo *romInfo) {
+  lfs_file_t file;
+  int lfs_err;
+  struct lfs_file_config fileconfig = {.buffer = _lfsFileBuffer};
+  char filenamebuffer[40] = "rtc/";
+
+  strcpy(&filenamebuffer[strlen(filenamebuffer)],
+         (const char *)&(romInfo->name));
+  printf("Saving RTC to file %s\n", filenamebuffer);
+
+  lfs_err = lfs_file_opencfg(&_lfs, &file, filenamebuffer,
+                             LFS_O_WRONLY | LFS_O_CREAT, &fileconfig);
+
+  if (lfs_err != LFS_ERR_OK) {
+    printf("Error opening file %d\n", lfs_err);
+  } else {
+    lfs_err = lfs_file_write(&_lfs, &file, (uint8_t *)&g_rtcReal.asArray[0],
+                             sizeof(struct GbRtc));
+    lfs_err += lfs_file_write(&_lfs, &file, (uint8_t *)&g_rtcLatched.asArray[0],
+                              sizeof(struct GbRtc));
+    lfs_err += lfs_file_write(&_lfs, &file, &g_rtcTimestamp, sizeof(uint64_t));
+
+    printf("wrote %d bytes\n", lfs_err);
+
+    lfs_file_close(&_lfs, &file);
+  }
+
+  if(g_rtcTimestamp > g_globalTimestamp)
+  {
+    storeLastTimestampToFile(&g_rtcTimestamp);
+  }
+}
+
+void loadLastTimestampFromFile(uint64_t *ts) {
+  lfs_file_t file;
+  struct lfs_file_config fileconfig = {.buffer = _lfsFileBuffer};
+  int lfs_err =
+      lfs_file_opencfg(&_lfs, &file, "timestamp", LFS_O_RDONLY, &fileconfig);
+
+  if (lfs_err == LFS_ERR_OK) {
+    lfs_err = lfs_file_read(&_lfs, &file, (uint8_t *)ts, sizeof(uint64_t));
+
+    if (lfs_err >= 0) {
+      lfs_file_close(&_lfs, &file);
+    }
+  }
+}
+
+void storeLastTimestampToFile(const uint64_t *ts) {
+  lfs_file_t file;
+  struct lfs_file_config fileconfig = {.buffer = _lfsFileBuffer};
+  int lfs_err = lfs_file_opencfg(&_lfs, &file, "timestamp",
+                                 LFS_O_WRONLY | LFS_O_CREAT, &fileconfig);
+
+  if (lfs_err != LFS_ERR_OK) {
+    printf("Error opening file %d\n", lfs_err);
+  } else {
+    lfs_err = lfs_file_write(&_lfs, &file, (uint8_t *)ts, sizeof(uint64_t));
+
+    lfs_file_close(&_lfs, &file);
+  }
 }

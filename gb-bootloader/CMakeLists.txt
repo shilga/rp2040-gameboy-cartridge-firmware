@@ -5,7 +5,11 @@ set(GBDK_LCC $ENV{GBDK_PATH}/bin/lcc)
 add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/bootloader.gb
     DEPENDS bootloader.c
-    COMMAND ${GBDK_LCC} -Wa-l -Wl-m -Wl-j -Wm-p -Wm-yc -Wm-yt2 -Wm-ya1 -o ${CMAKE_CURRENT_BINARY_DIR}/bootloader.gb ${CMAKE_CURRENT_LIST_DIR}/bootloader.c
+    COMMAND ${GBDK_LCC} -Wa-l -Wl-m -Wl-j -Wm-p -Wm-yc -Wm-yt2 -Wm-ya1
+        -o ${CMAKE_CURRENT_BINARY_DIR}/bootloader.gb
+        ${CMAKE_CURRENT_LIST_DIR}/bootloader.c
+        ${CMAKE_CURRENT_LIST_DIR}/giraffe_4color_data.c
+        ${CMAKE_CURRENT_LIST_DIR}/giraffe_4color_map.c
 )
 
 add_custom_command(

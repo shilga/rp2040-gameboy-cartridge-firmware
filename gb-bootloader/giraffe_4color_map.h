@@ -1,0 +1,6 @@
+#ifndef B8B88911_2FB2_4877_96F3_8DC8DE08CD7F
+#define B8B88911_2FB2_4877_96F3_8DC8DE08CD7F
+
+extern const unsigned char giraffe_4color_map[];
+
+#endif /* B8B88911_2FB2_4877_96F3_8DC8DE08CD7F */

@@ -15,6 +15,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,6 +28,7 @@
 #include <git_commit.h>
 
 #include "BuildVersion.h"
+#include "GameBoyHeader.h"
 #include "GlobalDefines.h"
 #include "device/usbd.h"
 #include "usb_descriptors.h"
@@ -57,6 +59,8 @@ static int handle_request_savegame_download_command(uint8_t buff[63]);
 static int handle_savegame_transmit_chunk_command(uint8_t buff[63]);
 static int handle_request_savegame_upload_command(uint8_t buff[63]);
 static int handle_savegame_received_chunk_command(uint8_t buff[63]);
+static int handle_rtc_download_command(uint8_t buff[63]);
+static int handle_rtc_upload_command(uint8_t buff[63]);
 
 void usb_start() { tusb_init(); }
 
@@ -200,6 +204,12 @@ static void handle_command(uint8_t command) {
   case 9:
     response_length =
         handle_savegame_received_chunk_command(&command_buffer[1]);
+    break;
+  case 10:
+    response_length = handle_rtc_download_command(&command_buffer[1]);
+    break;
+  case 11:
+    response_length = handle_rtc_upload_command(&command_buffer[1]);
     break;
   case 254:
     response_length = handle_device_info_command(&command_buffer[1]);
@@ -388,6 +398,100 @@ static int handle_savegame_received_chunk_command(uint8_t buff[63]) {
                                         &buff[sizeof(uint16_t) * 2]) < 0) {
     buff[0] = 1;
   }
+
+  return 1;
+}
+
+static int handle_rtc_download_command(uint8_t buff[63]) {
+  uint16_t bank, chunk;
+  size_t offset;
+
+  uint32_t count = tud_vendor_read(buff, 1);
+  if (count != 1) {
+    printf("wrong number of bytes for rtc download command, got %u\n", count);
+    return -1;
+  }
+
+  const uint8_t requestedRom = buff[0];
+
+  if (requestedRom >= g_numRoms) {
+    return -1;
+  }
+
+  struct RomInfo romInfo = {};
+  if (RomStorage_loadRomInfo(requestedRom, &romInfo)) {
+    return -1;
+  }
+
+  if (!GameBoyHeader_hasRtc(romInfo.firstBank)) {
+    return -2;
+  }
+
+  if (restoreRtcFromFile(&romInfo) < 0) {
+    return -3;
+  }
+
+  memset(&buff[1], 0, 48);
+  offset = 1;
+
+  for (size_t i = 0; i < sizeof(struct GbRtc); i++) {
+    buff[offset] = g_rtcReal.asArray[i];
+    buff[offset + (sizeof(struct GbRtc) * 4)] = g_rtcLatched.asArray[i];
+    offset += 4;
+  }
+
+  offset += 20;
+
+  buff[offset++] = g_rtcTimestamp & 0xFF;
+  buff[offset++] = (g_rtcTimestamp >> 8) & 0xFF;
+  buff[offset++] = (g_rtcTimestamp >> 16) & 0xFF;
+  buff[offset++] = (g_rtcTimestamp >> 24) & 0xFF;
+  buff[offset++] = (g_rtcTimestamp >> 32) & 0xFF;
+  buff[offset++] = (g_rtcTimestamp >> 40) & 0xFF;
+  buff[offset++] = (g_rtcTimestamp >> 48) & 0xFF;
+  buff[offset++] = (g_rtcTimestamp >> 56) & 0xFF;
+
+  return 48 + 1;
+}
+
+static int handle_rtc_upload_command(uint8_t buff[63]) {
+  uint16_t bank, chunk;
+  size_t offset;
+
+  uint32_t count = tud_vendor_read(buff, 48 + 1);
+  if (count != 49) {
+    printf("wrong number of bytes for rtc download command, got %u\n", count);
+    return -1;
+  }
+
+  const uint8_t requestedRom = buff[0];
+
+  if (requestedRom >= g_numRoms) {
+    return -1;
+  }
+
+  struct RomInfo romInfo = {};
+  if (RomStorage_loadRomInfo(requestedRom, &romInfo)) {
+    return -1;
+  }
+
+  if (!GameBoyHeader_hasRtc(romInfo.firstBank)) {
+    return -2;
+  }
+
+  offset = 1;
+
+  for (size_t i = 0; i < sizeof(struct GbRtc); i++) {
+    g_rtcReal.asArray[i] = buff[offset];
+    g_rtcLatched.asArray[i] = buff[offset + (sizeof(struct GbRtc) * 4)];
+    offset += 4;
+  }
+
+  offset += 20;
+
+  memcpy(&g_rtcTimestamp, &buff[offset], sizeof(uint64_t));
+
+  storeRtcToFile(&romInfo);
 
   return 1;
 }
