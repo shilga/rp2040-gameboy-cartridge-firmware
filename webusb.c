@@ -60,6 +60,7 @@ static int handle_savegame_transmit_chunk_command(uint8_t buff[63]);
 static int handle_request_savegame_upload_command(uint8_t buff[63]);
 static int handle_savegame_received_chunk_command(uint8_t buff[63]);
 static int handle_rtc_download_command(uint8_t buff[63]);
+static int handle_rtc_upload_command(uint8_t buff[63]);
 
 void usb_start() { tusb_init(); }
 
@@ -206,6 +207,9 @@ static void handle_command(uint8_t command) {
     break;
   case 10:
     response_length = handle_rtc_download_command(&command_buffer[1]);
+    break;
+  case 11:
+    response_length = handle_rtc_upload_command(&command_buffer[1]);
     break;
   case 254:
     response_length = handle_device_info_command(&command_buffer[1]);
