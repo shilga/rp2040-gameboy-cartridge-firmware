@@ -295,6 +295,7 @@ void __no_inline_not_in_flash_func(runGbBootloader)(uint8_t *selectedGame,
                                                     uint8_t *selectedGameMode) {
   uint8_t *ram = &ram_memory[0];
   struct SharedGameboyData *shared_data = (void *)ram;
+  bool cartridgeIsInGameboy = false;
 
   *selectedGame = 0xFF;
   *selectedGameMode = 0xFF;
@@ -336,6 +337,7 @@ void __no_inline_not_in_flash_func(runGbBootloader)(uint8_t *selectedGame,
 
   while (*selectedGame == 0xFF) {
     if (!pio_sm_is_rx_fifo_empty(pio1, SMC_GB_MAIN)) {
+      cartridgeIsInGameboy = true;
       uint32_t rdAndAddr = *((uint32_t *)(&pio1->rxf[SMC_GB_MAIN]));
       bool write = rdAndAddr & 0x00000001;
       uint16_t addr = (rdAndAddr >> 1) & 0xFFFF;
@@ -372,7 +374,7 @@ void __no_inline_not_in_flash_func(runGbBootloader)(uint8_t *selectedGame,
       }
     }
 
-    usb_run();
+    if (!cartridgeIsInGameboy) usb_run();
   }
 
   usb_shutdown();
