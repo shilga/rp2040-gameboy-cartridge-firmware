@@ -18,11 +18,13 @@
 #ifndef B8D95B66_116E_427A_B1E9_B1BF5AFC49E5
 #define B8D95B66_116E_427A_B1E9_B1BF5AFC49E5
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 uint8_t GameBoyHeader_readRamBankCount(const uint8_t *gameptr);
 
 bool GameBoyHeader_hasRtc(const uint8_t *gameptr);
+
+uint8_t GameBoyHeader_readMbc(const uint8_t *gameptr);
 
 #endif /* B8D95B66_116E_427A_B1E9_B1BF5AFC49E5 */

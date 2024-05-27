@@ -243,7 +243,8 @@ int main() {
       storeRtcToFile(&g_loadedRomInfo);
     }
 
-    if (g_loadedRomInfo.numRamBanks > 0) {
+    if ((g_loadedRomInfo.numRamBanks > 0) ||
+        (GameBoyHeader_readMbc(g_loadedRomInfo.firstBank) == 2)) {
       storeSaveRamToFile(&g_loadedRomInfo);
     }
 
@@ -374,7 +375,8 @@ void __no_inline_not_in_flash_func(runGbBootloader)(uint8_t *selectedGame,
       }
     }
 
-    if (!cartridgeIsInGameboy) usb_run();
+    if (!cartridgeIsInGameboy)
+      usb_run();
   }
 
   usb_shutdown();
@@ -476,8 +478,15 @@ void restoreSaveRamFromFile(const struct RomInfo *romInfo) {
   if (lfs_err == LFS_ERR_OK) {
     printf("found save at %s\n", filenamebuffer);
 
-    lfs_err = lfs_file_read(&_lfs, &file, ram_memory,
-                            romInfo->numRamBanks * GB_RAM_BANK_SIZE);
+    if (GameBoyHeader_readMbc(romInfo->firstBank) == 2) {
+      lfs_err = lfs_file_read(&_lfs, &file,
+                              &ram_memory[GB_RAM_BANK_SIZE - GB_MBC2_RAM_SIZE],
+                              GB_MBC2_RAM_SIZE);
+    } else {
+      lfs_err = lfs_file_read(&_lfs, &file, ram_memory,
+                              romInfo->numRamBanks * GB_RAM_BANK_SIZE);
+    }
+
     printf("read %d bytes\n", lfs_err);
 
     if (lfs_err >= 0) {
@@ -502,8 +511,14 @@ void storeSaveRamToFile(const struct RomInfo *romInfo) {
     printf("Error opening file %d\n", lfs_err);
   }
 
-  lfs_err = lfs_file_write(&_lfs, &file, ram_memory,
-                           romInfo->numRamBanks * GB_RAM_BANK_SIZE);
+  if (GameBoyHeader_readMbc(romInfo->firstBank) == 2) {
+    lfs_err = lfs_file_write(&_lfs, &file,
+                             &ram_memory[GB_RAM_BANK_SIZE - GB_MBC2_RAM_SIZE],
+                             GB_MBC2_RAM_SIZE);
+  } else {
+    lfs_err = lfs_file_write(&_lfs, &file, ram_memory,
+                             romInfo->numRamBanks * GB_RAM_BANK_SIZE);
+  }
   printf("wrote %d bytes\n", lfs_err);
 
   lfs_file_close(&_lfs, &file);
@@ -570,8 +585,7 @@ void storeRtcToFile(const struct RomInfo *romInfo) {
     lfs_file_close(&_lfs, &file);
   }
 
-  if(g_rtcTimestamp > g_globalTimestamp)
-  {
+  if (g_rtcTimestamp > g_globalTimestamp) {
     storeLastTimestampToFile(&g_rtcTimestamp);
   }
 }

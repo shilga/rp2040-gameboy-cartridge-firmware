@@ -34,6 +34,7 @@
 #define SMC_GB_WRITE_DATA 2
 #define SMC_GB_A15LOW_A14IRQS 3
 
+#define GB_MBC2_RAM_SIZE 0x200U
 #define GB_RAM_BANK_SIZE 0x2000U
 #define GB_ROM_BANK_SIZE 0x4000U
 /* 16 banks = 128K of RAM enough for MBC3 (32K) and MBC5*/
@@ -67,6 +68,7 @@ struct RomInfo {
   const uint8_t *firstBank;
   uint16_t speedSwitchBank;
   uint8_t numRamBanks;
+  uint8_t mbc;
   char name[17];
 };
 

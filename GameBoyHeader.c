@@ -38,3 +38,40 @@ bool GameBoyHeader_hasRtc(const uint8_t *gameptr) {
     return false;
   }
 }
+
+uint8_t GameBoyHeader_readMbc(const uint8_t *gameptr) {
+  uint8_t mbc = 0xFF;
+
+  switch (gameptr[0x0147]) {
+  case 0x00:
+    mbc = 0;
+    break;
+  case 0x01:
+  case 0x02:
+  case 0x03:
+    mbc = 1;
+    break;
+  case 0x05:
+  case 0x06:
+  case 0x07:
+    mbc = 2;
+    break;
+  case 0x0F:
+  case 0x10:
+  case 0x11:
+  case 0x12:
+  case 0x13:
+    mbc = 3;
+    break;
+  case 0x19:
+  case 0x1A:
+  case 0x1B:
+  case 0x1C:
+  case 0x1D:
+  case 0x1E:
+    mbc = 5;
+    break;
+  }
+
+  return mbc;
+}

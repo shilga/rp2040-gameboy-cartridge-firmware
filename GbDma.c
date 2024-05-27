@@ -62,7 +62,7 @@ static struct DmaCommand LOWER_ROM_READ[] = {
   { &LOWER_ROM_READ_DMA_CTRL, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].al1_ctrl) }, // load the settings for this transfer into the MEMORY_ACCESOR_DMA control register
   { &_txFifoWriteData, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].write_addr) }, // load the addr of the tx-fifo of the write data PIO-SM into the write register of MEMORY_ACCESSOR_DMA
   { &(pio0->rxf[SMC_GB_ROM_LOW]), &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].read_addr) }, // load the addr from the rx-fifo of the PIO-SM triggering this transfer
-  { &rom_low_base, hw_set_alias_untyped(&(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].al3_read_addr_trig)) }, // load the base addr, write it into the read-addr of the READ_DMA, xor-ing it with the addr received and trigger the READ_DMA transfer
+  { &rom_low_base, hw_set_alias_untyped(&(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].al3_read_addr_trig)) }, // load the base addr, write it into the read-addr of the READ_DMA, or-ing it with the addr received and trigger the READ_DMA transfer
   { NULL, NULL}
 };
 
@@ -71,7 +71,7 @@ static struct DmaCommand RAM_READ[] = {
   { &RAM_READ_DMA_CTRL, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].al1_ctrl) }, // load the settings for this transfer into the MEMORY_ACCESOR_DMA control register
   { &_txFifoWriteData, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].write_addr) }, // load the addr of the tx-fifo of the write data PIO-SM into the write register of MEMORY_ACCESSOR_DMA
   { &(pio1->rxf[SMC_GB_RAM_READ]), &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].read_addr) }, // load the addr from the rx-fifo of the PIO-SM triggering this transfer
-  { &ram_base, hw_set_alias_untyped(&(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].al3_read_addr_trig)) }, // load the base addr, write it into the read-addr of the MEMORY_ACCESSOR_DMA, xor-ing it with the addr received and trigger the MEMORY_ACCESSOR_DMA transfer
+  { &ram_base, hw_set_alias_untyped(&(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].al3_read_addr_trig)) }, // load the base addr, write it into the read-addr of the MEMORY_ACCESSOR_DMA, or-ing it with the addr received and trigger the MEMORY_ACCESSOR_DMA transfer
   { NULL, NULL}
 };
 
@@ -79,7 +79,7 @@ static volatile uint32_t RAM_WRITE_DMA_CTRL = (DMA_CHANNEL_RAM_WRITE_REQUESTOR <
 static struct DmaCommand RAM_WRITE[] = {
   { &RAM_WRITE_DMA_CTRL, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].al1_ctrl) }, // setup MEMORY_ACCESSOR_DMA for this write to RAM transaction
   { &(pio1->rxf[SMC_GB_RAM_WRITE]), &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].write_addr) }, // load the addr from the rx-fifo of the PIO-SM triggering this transfer into the write addr of MEMORY_ACCESSOR_DMA
-  { &ram_base, hw_set_alias_untyped(&(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].write_addr)) }, // load the base addr into the write addr of MEMORY_ACCESSOR_DMA, xor-ing it with the addr already there (received from rx-fifo)
+  { &ram_base, hw_set_alias_untyped(&(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].write_addr)) }, // load the base addr into the write addr of MEMORY_ACCESSOR_DMA, or-ing it with the addr already there (received from rx-fifo)
   { &_rxFifoRamWrite, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].al3_read_addr_trig) }, // load the addr of the rx-fifo which will have the data to be written to RAM into the read register of MEMORY_ACCESSOR_DMA and trigger it's transfer
   { NULL, NULL}
 };
@@ -88,7 +88,7 @@ struct DmaCommand RAM_DUMMY_READ[] = {
   { &RAM_READ_DMA_CTRL, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].al1_ctrl) }, // load the settings for this transfer into the MEMORY_ACCESOR_DMA control register
   { &_devNullPtr, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].write_addr) }, // load the addr of the tx-fifo of the write data PIO-SM into the write register of MEMORY_ACCESSOR_DMA
   { &(pio1->rxf[SMC_GB_RAM_READ]), &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].read_addr) }, // load the addr from the rx-fifo of the PIO-SM triggering this transfer
-  { &ram_base, hw_set_alias_untyped(&(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].al3_read_addr_trig)) }, // load the base addr, write it into the read-addr of the MEMORY_ACCESSOR_DMA, xor-ing it with the addr received and trigger the MEMORY_ACCESSOR_DMA transfer
+  { &ram_base, hw_set_alias_untyped(&(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].al3_read_addr_trig)) }, // load the base addr, write it into the read-addr of the MEMORY_ACCESSOR_DMA, or-ing it with the addr received and trigger the MEMORY_ACCESSOR_DMA transfer
   { NULL, NULL}
 };
 

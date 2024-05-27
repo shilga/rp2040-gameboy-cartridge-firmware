@@ -16,6 +16,7 @@
  */
 
 #include "mbc.h"
+#include "GameBoyHeader.h"
 #include "GbDma.h"
 #include "GbRtc.h"
 #include "GlobalDefines.h"
@@ -47,6 +48,7 @@ static uint8_t *_bankWithVBlankOverride = &memory[2 * GB_ROM_BANK_SIZE];
 
 void runNoMbcGame();
 void runMbc1Game();
+void runMbc2Game();
 void runMbc3Game();
 void runMbc5Game();
 
@@ -62,37 +64,8 @@ void loadGame(uint8_t mode) {
 
   printf("Loading selected game info at %p:\n", gameptr);
 
-  switch (gameptr[0x0147]) {
-  case 0x00:
-    mbc = 0;
-    break;
-  case 0x01:
-  case 0x02:
-  case 0x03:
-    mbc = 1;
-    break;
-  case 0x05:
-  case 0x06:
-  case 0x07:
-    mbc = 2;
-    break;
-  case 0x0F:
-  case 0x10:
-    _hasRtc = true;
-  case 0x11:
-  case 0x12:
-  case 0x13:
-    mbc = 3;
-    break;
-  case 0x19:
-  case 0x1A:
-  case 0x1B:
-  case 0x1C:
-  case 0x1D:
-  case 0x1E:
-    mbc = 5;
-    break;
-  }
+  mbc = GameBoyHeader_readMbc(gameptr);
+  _hasRtc = GameBoyHeader_hasRtc(gameptr);
 
   _numRomBanks = 1 << (gameptr[0x0148] + 1);
   _vBlankMode = mode;
@@ -108,7 +81,7 @@ void loadGame(uint8_t mode) {
     GbRtc_advanceToNewTimestamp(g_globalTimestamp);
   }
 
-  if (g_loadedRomInfo.numRamBanks > 0) {
+  if ((g_loadedRomInfo.numRamBanks > 0) || (mbc == 2)) {
     restoreSaveRamFromFile(&g_loadedRomInfo);
   } else {
     _vBlankMode = 0;
@@ -126,6 +99,7 @@ void loadGame(uint8_t mode) {
   ws2812b_setRgb(0, 0, 0);
 
   ram_base = ram_memory;
+  GbDma_DisableSaveRam();
 
   memcpy(memory, g_loadedRomBanks[0], GB_ROM_BANK_SIZE);
   if (_vBlankMode) {
@@ -138,6 +112,9 @@ void loadGame(uint8_t mode) {
     break;
   case 0x01:
     runMbc1Game();
+    break;
+  case 0x02:
+    runMbc2Game();
     break;
   case 0x03:
     runMbc3Game();
@@ -293,6 +270,93 @@ void __no_inline_not_in_flash_func(runMbc1Game)() {
           ram_bank = ram_bank_new;
           ram_base = &ram_memory[ram_bank * GB_RAM_BANK_SIZE];
         }
+      } else { // read
+        if (_vBlankMode) {
+          process_vblank_hook(addr);
+        }
+      }
+    }
+  }
+}
+
+void __no_inline_not_in_flash_func(runMbc2Game)() {
+  uint8_t rom_bank = 1;
+  uint8_t rom_bank_new = 1;
+  uint16_t rom_banks_mask = _numRomBanks - 1;
+  bool ram_enabled = 0;
+  bool new_ram_enabled = 0;
+
+  rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[1];
+
+  printf("MBC2 game loaded\n");
+  printf("initial bank %d a %p\n", rom_bank, g_loadedRomBanks[1]);
+
+  pio_sm_set_enabled(pio0, SMC_GB_ROM_HIGH, true);
+
+  __compiler_memory_barrier();
+  setSsi8bit();
+  GbDma_StartDmaDirect();
+
+  /*
+   * Set base addr so that the higher 4 addr bits to be set. This trick causes
+   * only the 9 addr lines to be used as the other bits are always set in the
+   * base addr. The actual data is then stored in last area of a RAM bank.
+   */
+  ram_base = &ram_memory[GB_RAM_BANK_SIZE - GB_MBC2_RAM_SIZE];
+
+  gpio_put(PIN_GB_RESET, 0); // let the gameboy start (deassert reset line)
+
+  while (1) {
+    if (!pio_sm_is_rx_fifo_empty(pio1, SMC_GB_MAIN)) {
+      uint32_t rdAndAddr = pio_sm_get_blocking(pio1, SMC_GB_MAIN);
+      bool write = rdAndAddr & 0x00000001;
+      uint16_t addr = (rdAndAddr >> 1) & 0xFFFF;
+
+      if (write) {
+        uint8_t data = pio_sm_get_blocking(pio1, SMC_GB_MAIN) & 0xFF;
+
+        switch (addr & 0xE000) {
+        case 0x0000:
+        case 0x2000:
+          if (addr & 0x100) {
+            rom_bank_new = (data & 0xF);
+            if (rom_bank_new == 0x00)
+              rom_bank_new++;
+          } else {
+            if (data == 0xA)
+              new_ram_enabled = true;
+            else
+              new_ram_enabled = false;
+          }
+          break;
+
+        case 0xA000: // write to RAM
+          if (!_ramDirty && ram_enabled) {
+            ws2812b_setRgb(0x10, 0, 0); // switch on LED to red
+            _ramDirty = true;
+          }
+          break;
+        default:
+
+          break;
+        }
+
+        rom_bank_new = rom_bank_new & rom_banks_mask;
+
+        if (rom_bank != rom_bank_new) {
+          rom_bank = rom_bank_new;
+          rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[rom_bank];
+        }
+
+        if (ram_enabled != new_ram_enabled) {
+          ram_enabled = new_ram_enabled;
+          if (ram_enabled) {
+            GbDma_EnableSaveRam();
+          } else {
+            GbDma_DisableSaveRam();
+          }
+        }
+
       } else { // read
         if (_vBlankMode) {
           process_vblank_hook(addr);
@@ -655,8 +719,7 @@ void __no_inline_not_in_flash_func(storeCurrentlyRunningSaveGame)() {
   __compiler_memory_barrier();
 
   storeSaveRamToFile(&g_loadedRomInfo);
-  if(_hasRtc)
-  {
+  if (_hasRtc) {
     storeRtcToFile(&g_loadedRomInfo);
   }
 
