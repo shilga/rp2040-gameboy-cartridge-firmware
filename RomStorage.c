@@ -75,6 +75,7 @@ static char _fileNameBuffer[25] = "/roms/";
 static char _filenamebufferSaves[40] = "saves/";
 
 static size_t _ramBytesTransferred = 0;
+static size_t _ramBytesToTransfer = 0;
 
 static bool _romTransferActive = false;
 static bool _ramTransferActive = false;
@@ -191,6 +192,7 @@ int RomStorage_loadRomInfo(uint32_t rom, struct RomInfo *outRomInfo) {
       outRomInfo->firstBank = RomBankToPointer(_romInfoFile.banks[0]);
       outRomInfo->numRamBanks =
           GameBoyHeader_readRamBankCount(outRomInfo->firstBank);
+      outRomInfo->mbc = GameBoyHeader_readMbc(outRomInfo->firstBank);
       outRomInfo->speedSwitchBank = _romInfoFile.speedSwitchBank;
 
       romFound = true;
@@ -409,7 +411,7 @@ int RomStorage_StartRamDownload(uint8_t rom) {
 
   ASSURE(!RomStorage_loadRomInfo(rom, &g_loadedRomInfo));
 
-  if (g_loadedRomInfo.numRamBanks == 0) {
+  if ((g_loadedRomInfo.numRamBanks == 0) && (g_loadedRomInfo.mbc != 2)) {
     return -3;
   }
 
@@ -425,6 +427,9 @@ int RomStorage_StartRamDownload(uint8_t rom) {
   PRINTASSURE(lfs_err == LFS_ERR_OK, "Error opening file %d\n", lfs_err);
 
   _ramBytesTransferred = 0;
+  _ramBytesToTransfer = g_loadedRomInfo.mbc == 2
+                            ? GB_MBC2_RAM_SIZE
+                            : g_loadedRomInfo.numRamBanks * GB_RAM_BANK_SIZE;
 
 error:
   return err;
@@ -446,7 +451,7 @@ int RomStorage_GetRamDownloadChunk(uint8_t data[32], uint16_t *bank,
 
   _ramBytesTransferred += 32;
 
-  if (_ramBytesTransferred >= g_loadedRomInfo.numRamBanks * GB_RAM_BANK_SIZE) {
+  if (_ramBytesTransferred >= _ramBytesToTransfer) {
     printf("RAM transfer finished\n");
 
     lfs_file_close(_lfs, &_ramTransferFile);
@@ -476,7 +481,7 @@ int RomStorage_StartRamUpload(uint8_t rom) {
 
   ASSURE(!RomStorage_loadRomInfo(rom, &g_loadedRomInfo));
 
-  if (g_loadedRomInfo.numRamBanks == 0) {
+  if ((g_loadedRomInfo.numRamBanks == 0) && (g_loadedRomInfo.mbc != 2)) {
     return -3;
   }
 
@@ -492,6 +497,9 @@ int RomStorage_StartRamUpload(uint8_t rom) {
   PRINTASSURE(lfs_err == LFS_ERR_OK, "Error opening file %d\n", lfs_err);
 
   _ramBytesTransferred = 0;
+  _ramBytesToTransfer = g_loadedRomInfo.mbc == 2
+                            ? GB_MBC2_RAM_SIZE
+                            : g_loadedRomInfo.numRamBanks * GB_RAM_BANK_SIZE;
 
 error:
   return err;
@@ -527,7 +535,7 @@ int RomStorage_TransferRamUploadChunk(uint16_t bank, uint16_t chunk,
 
   _ramBytesTransferred += 32;
 
-  if (_ramBytesTransferred >= g_loadedRomInfo.numRamBanks * GB_RAM_BANK_SIZE) {
+  if (_ramBytesTransferred >= _ramBytesToTransfer) {
     printf("RAM transfer finished\n");
 
     lfs_file_close(_lfs, &_ramTransferFile);

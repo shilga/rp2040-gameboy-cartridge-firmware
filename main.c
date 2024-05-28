@@ -243,8 +243,7 @@ int main() {
       storeRtcToFile(&g_loadedRomInfo);
     }
 
-    if ((g_loadedRomInfo.numRamBanks > 0) ||
-        (GameBoyHeader_readMbc(g_loadedRomInfo.firstBank) == 2)) {
+    if ((g_loadedRomInfo.numRamBanks > 0) || (g_loadedRomInfo.mbc == 2)) {
       storeSaveRamToFile(&g_loadedRomInfo);
     }
 
@@ -478,7 +477,7 @@ void restoreSaveRamFromFile(const struct RomInfo *romInfo) {
   if (lfs_err == LFS_ERR_OK) {
     printf("found save at %s\n", filenamebuffer);
 
-    if (GameBoyHeader_readMbc(romInfo->firstBank) == 2) {
+    if (romInfo->mbc == 2) {
       lfs_err = lfs_file_read(&_lfs, &file,
                               &ram_memory[GB_RAM_BANK_SIZE - GB_MBC2_RAM_SIZE],
                               GB_MBC2_RAM_SIZE);
@@ -511,7 +510,7 @@ void storeSaveRamToFile(const struct RomInfo *romInfo) {
     printf("Error opening file %d\n", lfs_err);
   }
 
-  if (GameBoyHeader_readMbc(romInfo->firstBank) == 2) {
+  if (romInfo->mbc == 2) {
     lfs_err = lfs_file_write(&_lfs, &file,
                              &ram_memory[GB_RAM_BANK_SIZE - GB_MBC2_RAM_SIZE],
                              GB_MBC2_RAM_SIZE);
