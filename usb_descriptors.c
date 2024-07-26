@@ -25,6 +25,7 @@
 
 #include "tusb.h"
 #include "usb_descriptors.h"
+#include "GlobalDefines.h"
 
 /* A combination of interfaces must have a unique product id, since PC will save device driver after the first plug.
  * Same VID/PID with different interface e.g MSC (first), then CDC (later) will possibly cause system error on PC.
@@ -177,7 +178,7 @@ char const* string_desc_arr [] =
   (const char[]) { 0x09, 0x04 }, // 0: is supported language is English (0x0409)
   "x-pantion",                     // 1: Manufacturer
   "Croco Cartridge",              // 2: Product
-  "1",                      // 3: Serials, should use chip ID
+  g_serialNumberString,           // 3: Serials, should use chip ID
   "TinyUSB WebUSB"               // 5: Vendor Interface
 };
 

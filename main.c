@@ -83,6 +83,8 @@ uint8_t g_numRoms = 0;
 const uint8_t *g_loadedRomBanks[MAX_BANKS_PER_ROM];
 uint32_t g_loadedDirectAccessRomBanks[MAX_BANKS_PER_ROM];
 uint64_t g_globalTimestamp = RP2040_GB_CARTRIDGE_BUILD_TIMESTAMP;
+uint8_t g_flashSerialNumber[FLASH_UNIQUE_ID_SIZE_BYTES];
+char g_serialNumberString[(FLASH_UNIQUE_ID_SIZE_BYTES * 2) + 1];
 
 struct RomInfo __attribute__((section(".noinit."))) g_loadedRomInfo;
 
@@ -118,6 +120,14 @@ int main() {
          RP2040_GB_CARTRIDGE_VERSION_MAJOR, RP2040_GB_CARTRIDGE_VERSION_MINOR,
          RP2040_GB_CARTRIDGE_VERSION_PATCH, git_Branch(), git_CommitSHA1Short(),
          git_AnyUncommittedChanges() ? "dirty" : "");
+
+  flash_get_unique_id(g_flashSerialNumber);
+  snprintf(g_serialNumberString, sizeof(g_serialNumberString),
+           "%02X%02X%02X%02X%02X%02X%02X%02X", g_flashSerialNumber[0],
+           g_flashSerialNumber[1], g_flashSerialNumber[2],
+           g_flashSerialNumber[3], g_flashSerialNumber[4],
+           g_flashSerialNumber[5], g_flashSerialNumber[6],
+           g_flashSerialNumber[7]);
 
   printf("SSI->BAUDR: %x\n", *((uint32_t *)(XIP_SSI_BASE + SSI_BAUDR_OFFSET)));
 

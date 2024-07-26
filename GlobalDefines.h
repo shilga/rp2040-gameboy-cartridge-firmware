@@ -110,6 +110,8 @@ extern volatile union GbRtcUnion g_rtcReal;
 extern volatile union GbRtcUnion g_rtcLatched;
 extern uint64_t g_rtcTimestamp;
 extern uint64_t g_globalTimestamp;
+extern uint8_t g_flashSerialNumber[8];
+extern char g_serialNumberString[];
 
 /* taken from
  * https://github.com/tihmstar/libgeneral/blob/master/include/libgeneral/macros.h.in

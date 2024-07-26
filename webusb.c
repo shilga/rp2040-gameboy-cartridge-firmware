@@ -51,6 +51,7 @@ const tusb_desc_webusb_url_t desc_url = {.bLength = 3 + sizeof(URL) - 1,
 static void webserial_task(void);
 static void handle_command(uint8_t command);
 static int handle_device_info_command(uint8_t buff[63]);
+static int handle_device_serial_id_command(uint8_t buff[63]);
 static int handle_new_rom_command(uint8_t buff[63]);
 static int handle_rom_upload_command(uint8_t buff[63]);
 static int handle_request_rom_info_command(uint8_t buff[63]);
@@ -211,6 +212,9 @@ static void handle_command(uint8_t command) {
   case 11:
     response_length = handle_rtc_upload_command(&command_buffer[1]);
     break;
+  case 253:
+    response_length = handle_device_serial_id_command(&command_buffer[1]);
+    break;
   case 254:
     response_length = handle_device_info_command(&command_buffer[1]);
     break;
@@ -246,6 +250,11 @@ static int handle_device_info_command(uint8_t buff[63]) {
   buff[9] = git_sha1 & 0xFF;
   buff[10] = git_AnyUncommittedChanges();
   return 11;
+}
+
+static int handle_device_serial_id_command(uint8_t buff[63]) {
+  memcpy(buff, g_flashSerialNumber, sizeof(g_flashSerialNumber));
+  return sizeof(g_flashSerialNumber);
 }
 
 static int handle_new_rom_command(uint8_t buff[63]) {
