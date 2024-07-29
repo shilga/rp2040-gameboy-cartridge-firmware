@@ -600,11 +600,26 @@ void __no_inline_not_in_flash_func(runMbc5Game)() {
   }
 }
 
-enum eDETECT_SPEED_CHANGE_STATE {
-  SPEED_CHANGE_IDLE,
-  SPEED_CHANGE_LDH,
-  SPEED_CHANGE_KEY1,
-} _speedChangeState = SPEED_CHANGE_IDLE;
+enum eLDH_STATE {
+  LDH_STATE_IDLE,
+  LDH_STATE_LDH,
+  LDH_STATE_KEY1,
+  LDH_STATE_IGNORE_NEXT_BYTE
+} static _ldhState = LDH_STATE_IDLE;
+
+enum eLD_HL_STATE {
+  LD_HL_STATE_IDLE,
+  LD_HL_STATE_LD_HL,
+  LD_HL_STATE_LD_HL_1
+} static _ldhlState = LD_HL_STATE_IDLE;
+
+enum eSET0_HL_STATE {
+  SET0_HL_STATE_IDLE,
+  SET0_HL_STATE_CB
+} static _set0hlState = SET0_HL_STATE_IDLE;
+
+static uint16_t _hl = 0;
+static uint8_t _key1 = 0;
 
 void __no_inline_not_in_flash_func(detect_speed_change)(uint16_t addr,
                                                         uint16_t bank) {
@@ -614,6 +629,7 @@ void __no_inline_not_in_flash_func(detect_speed_change)(uint16_t addr,
   switch (addr & 0xC000) {
   case 0x0000:
     data = memory[addr & 0x3FFFU];
+    bank = 0;
     break;
   case 0x4000:
     if (isSpeedSwitchBank) {
@@ -624,29 +640,74 @@ void __no_inline_not_in_flash_func(detect_speed_change)(uint16_t addr,
     break;
   }
 
-  switch (data) {
-  case 0xe0: // LDH
-    if (_speedChangeState == SPEED_CHANGE_IDLE) {
-      _speedChangeState = SPEED_CHANGE_LDH;
+  switch (_ldhState) {
+  case LDH_STATE_IDLE:
+    if (data == 0xe0) // ldh
+    {
+      _ldhState = LDH_STATE_LDH;
     }
     break;
-  case 0x4d: // LDH KEY1,A
-    if (_speedChangeState == SPEED_CHANGE_LDH) {
-      _speedChangeState = SPEED_CHANGE_KEY1;
+
+  case LDH_STATE_LDH:
+    if (data == 0x4d) {
+      _ldhState = LDH_STATE_KEY1;
+    } else {
+      _ldhState = LDH_STATE_IDLE;
     }
     break;
-  case 0x10: // STOP
-    if (_speedChangeState == SPEED_CHANGE_KEY1) {
-      // speed change is triggered
-      _speedChangeState = SPEED_CHANGE_IDLE;
+
+  case LDH_STATE_KEY1:
+    if (data == 0x10) { // stop
+      _ldhState = LDH_STATE_IDLE;
       loadDoubleSpeedPio(bank, addr);
+    } else if (data == 0xc9) { // ret
+      _ldhState = LDH_STATE_IDLE;
+    } else if (data == 0xe0) {
+      _ldhState = LDH_STATE_IGNORE_NEXT_BYTE;
     }
     break;
-  default:
-    if (_speedChangeState == SPEED_CHANGE_LDH) {
-      _speedChangeState = SPEED_CHANGE_IDLE;
+
+  case LDH_STATE_IGNORE_NEXT_BYTE:
+    _ldhState = LDH_STATE_KEY1;
+    break;
+  }
+
+  switch (_ldhlState) {
+  case LD_HL_STATE_IDLE:
+    if (data == 0x21) // ld HL,d16
+    {
+      _ldhlState = LD_HL_STATE_LD_HL;
     }
     break;
+  case LD_HL_STATE_LD_HL:
+    _hl = data;
+    _ldhlState = LD_HL_STATE_LD_HL_1;
+    break;
+
+  case LD_HL_STATE_LD_HL_1:
+    _hl = (data << 8) | _hl;
+    _ldhlState = LD_HL_STATE_IDLE;
+    break;
+  }
+
+  switch (_set0hlState) {
+  case SET0_HL_STATE_IDLE:
+    if (data == 0xcb) // prefix cb
+    {
+      _set0hlState = SET0_HL_STATE_CB;
+    }
+    break;
+  case SET0_HL_STATE_CB:
+    _set0hlState = SET0_HL_STATE_IDLE;
+    if ((data == 0xc6) && (_hl == 0xff4d)) {
+      _key1 = 1;
+    }
+    break;
+  }
+
+  if ((data == 0x10) && (_key1 == 1)) {
+    loadDoubleSpeedPio(bank, addr);
+    _key1 = 0;
   }
 }
 
