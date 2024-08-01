@@ -71,7 +71,7 @@ SECTIONS
         /* bit of a hack right now to exclude all floating point and time critical (e.g. memset, memcpy) code from
          * FLASH ... we will include any thing excluded here in .data below by default */
         *(.init)
-        *(EXCLUDE_FILE(*libgcc.a: *libc.a:*lib_a-mem*.o *libm.a: *libprintf.a: *timer.c.obj) .text*)
+        *(EXCLUDE_FILE(*libgcc.a: *libc.a:*lib_a-mem*.o *libm.a: *timer.c.obj *printf.c.obj *stdio.c.obj *stdio_uart.c.obj) .text*)
         *(.fini)
         /* Pull all c'tors into .text */
         *crtbegin.o(.ctors)
@@ -91,7 +91,7 @@ SECTIONS
     } > FLASH
 
     .rodata : {
-        *(EXCLUDE_FILE(*libgcc.a: *libc.a:*lib_a-mem*.o *libm.a:) .rodata*)
+        *(EXCLUDE_FILE(*libgcc.a: *libc.a:*lib_a-mem*.o *libm.a: *timer.c.obj *printf.c.obj *stdio.c.obj *stdio_uart.c.obj) .rodata*)
         . = ALIGN(4);
         *(SORT_BY_ALIGNMENT(SORT_BY_NAME(.flashdata*)))
         . = ALIGN(4);

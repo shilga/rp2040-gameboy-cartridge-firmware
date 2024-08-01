@@ -80,7 +80,7 @@ extern struct RomInfo g_loadedRomInfo;
 
 void setSsi8bit();
 void setSsi32bit();
-void loadDoubleSpeedPio();
+void loadDoubleSpeedPio(uint16_t bank, uint16_t addr);
 void storeSaveRamToFile(const struct RomInfo *shortRomInfo);
 void restoreSaveRamFromFile(const struct RomInfo *shortRomInfo);
 int restoreRtcFromFile(const struct RomInfo *romInfo);

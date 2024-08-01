@@ -41,6 +41,7 @@
 
 static bool _ramDirty = false;
 static uint16_t _numRomBanks = 0;
+static uint16_t _speedSwitchBank = 1;
 static uint8_t _numRamBanks = 0;
 static bool _hasRtc = false;
 static uint8_t _vBlankMode = 0;
@@ -52,7 +53,7 @@ void runMbc2Game();
 void runMbc3Game();
 void runMbc5Game();
 
-void detect_speed_change(uint16_t addr, bool isSpeedSwitchBank);
+void detect_speed_change(uint16_t addr, uint16_t bank);
 void process_vblank_hook(uint16_t addr);
 void initialize_vblank_hook();
 void storeCurrentlyRunningSaveGame();
@@ -374,17 +375,16 @@ void __no_inline_not_in_flash_func(runMbc3Game)() {
   bool ram_enabled = 0;
   bool new_ram_enabled = 0;
   uint16_t rom_banks_mask = _numRomBanks - 1;
-  uint16_t speedSwitchBank = 1U;
   uint64_t now, lastSecond = time_us_64();
   bool rtcLatch = false;
 
   rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[1];
 
   if (g_loadedRomInfo.speedSwitchBank <= _numRomBanks) {
-    speedSwitchBank = g_loadedRomInfo.speedSwitchBank;
+    _speedSwitchBank = g_loadedRomInfo.speedSwitchBank;
   }
 
-  memcpy(&memory[GB_ROM_BANK_SIZE], g_loadedRomBanks[speedSwitchBank],
+  memcpy(&memory[GB_ROM_BANK_SIZE], g_loadedRomBanks[_speedSwitchBank],
          GB_ROM_BANK_SIZE);
 
   GbDma_DisableSaveRam(); // todo: should be disabled in general
@@ -392,7 +392,7 @@ void __no_inline_not_in_flash_func(runMbc3Game)() {
   printf("MBC3 game loaded\n");
   printf("has RTC: %d\n", _hasRtc);
   printf("initial bank %d a %p\n", rom_bank, g_loadedRomBanks[1]);
-  printf("speedSwitchBank %d\n", speedSwitchBank);
+  printf("speedSwitchBank %d\n", _speedSwitchBank);
 
   pio_sm_set_enabled(pio0, SMC_GB_ROM_HIGH, true);
 
@@ -490,7 +490,7 @@ void __no_inline_not_in_flash_func(runMbc3Game)() {
         if (_vBlankMode) {
           process_vblank_hook(addr);
         }
-        detect_speed_change(addr, rom_bank == speedSwitchBank);
+        detect_speed_change(addr, rom_bank);
       }
     }
 
@@ -507,20 +507,19 @@ void __no_inline_not_in_flash_func(runMbc5Game)() {
   bool new_ram_enabled = 0;
   const uint16_t rom_banks_mask = _numRomBanks - 1;
   const uint8_t ram_banks_mask = _numRamBanks - 1;
-  uint16_t speedSwitchBank = 1U;
 
   if (g_loadedRomInfo.speedSwitchBank <= _numRomBanks) {
-    speedSwitchBank = g_loadedRomInfo.speedSwitchBank;
+    _speedSwitchBank = g_loadedRomInfo.speedSwitchBank;
   }
 
-  memcpy(&memory[GB_ROM_BANK_SIZE], g_loadedRomBanks[speedSwitchBank],
+  memcpy(&memory[GB_ROM_BANK_SIZE], g_loadedRomBanks[_speedSwitchBank],
          GB_ROM_BANK_SIZE);
 
   rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[1];
 
   printf("MBC5 game loaded\n");
   printf("initial bank %d a %p\n", rom_bank, g_loadedRomBanks[1]);
-  printf("speedSwitchBank %d\n", speedSwitchBank);
+  printf("speedSwitchBank %d\n", _speedSwitchBank);
 
   pio_sm_set_enabled(pio0, SMC_GB_ROM_HIGH, true);
 
@@ -595,7 +594,7 @@ void __no_inline_not_in_flash_func(runMbc5Game)() {
         if (_vBlankMode) {
           process_vblank_hook(addr);
         }
-        detect_speed_change(addr, rom_bank == speedSwitchBank);
+        detect_speed_change(addr, rom_bank);
       }
     }
   }
@@ -607,9 +606,11 @@ enum eDETECT_SPEED_CHANGE_STATE {
   SPEED_CHANGE_KEY1,
 } _speedChangeState = SPEED_CHANGE_IDLE;
 
-void __no_inline_not_in_flash_func(detect_speed_change)(
-    uint16_t addr, bool isSpeedSwitchBank) {
+void __no_inline_not_in_flash_func(detect_speed_change)(uint16_t addr,
+                                                        uint16_t bank) {
   uint8_t data = 0;
+  const bool isSpeedSwitchBank = bank == _speedSwitchBank;
+
   switch (addr & 0xC000) {
   case 0x0000:
     data = memory[addr & 0x3FFFU];
@@ -638,7 +639,7 @@ void __no_inline_not_in_flash_func(detect_speed_change)(
     if (_speedChangeState == SPEED_CHANGE_KEY1) {
       // speed change is triggered
       _speedChangeState = SPEED_CHANGE_IDLE;
-      loadDoubleSpeedPio();
+      loadDoubleSpeedPio(bank, addr);
     }
     break;
   default:

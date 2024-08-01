@@ -396,7 +396,11 @@ void __no_inline_not_in_flash_func(runGbBootloader)(uint8_t *selectedGame,
   gpio_put(PIN_GB_RESET, 1);
 }
 
-void __no_inline_not_in_flash_func(loadDoubleSpeedPio)() {
+// format string must be stored in RAM
+char _loadDoubleSpeedPio_printfFormat[] = "ds %x %x\n";
+void __no_inline_not_in_flash_func(loadDoubleSpeedPio)(uint16_t bank,
+                                                       uint16_t addr) {
+
   pio_sm_set_enabled(pio1, SMC_GB_MAIN, false);
 
   // manually replace statemachine instruction in order to not use flash
@@ -408,6 +412,8 @@ void __no_inline_not_in_flash_func(loadDoubleSpeedPio)() {
             ? instr
             : instr + _offset_main;
   }
+
+  printf(_loadDoubleSpeedPio_printfFormat, bank, addr);
 
   pio_sm_set_enabled(pio1, SMC_GB_MAIN, true);
 
