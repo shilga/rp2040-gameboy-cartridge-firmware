@@ -69,6 +69,7 @@ struct RomInfo {
   uint16_t speedSwitchBank;
   uint8_t numRamBanks;
   uint8_t mbc;
+  uint16_t numRomBanks;
   char name[17];
 };
 
