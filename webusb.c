@@ -32,6 +32,7 @@
 #include "GlobalDefines.h"
 #include "device/usbd.h"
 #include "usb_descriptors.h"
+#include "ws2812b_spi.h"
 
 #include "BuildVersion.h"
 #include "RomStorage.h"
@@ -281,12 +282,14 @@ static int handle_new_rom_command(uint8_t buff[63]) {
 
 static int handle_rom_upload_command(uint8_t buff[63]) {
   uint16_t bank, chunk;
-
+  
   uint32_t count = tud_vendor_read(buff, 36);
   if (count != 36) {
     printf("wrong number of bytes for rom chunk\n");
     return -1;
   }
+
+  ws2812b_setRgb(16, 5, 0); // Set LED to orange
 
   bank = (buff[0] << 8) + buff[1];
   chunk = (buff[2] << 8) + buff[3];
@@ -297,6 +300,8 @@ static int handle_rom_upload_command(uint8_t buff[63]) {
     buff[0] = 1;
   }
 
+  ws2812b_setRgb(0, 0, 0); // Set LED to off
+  
   return 1;
 }
 
@@ -317,12 +322,15 @@ static int handle_request_rom_info_command(uint8_t buff[63]) {
     struct RomInfo romInfo = {};
     if (RomStorage_loadRomInfo(requestedRom, &romInfo))
       return -1;
+    
     memcpy(buff, &romInfo.name, 17);
     buff[17] = romInfo.numRamBanks;
     buff[18] = romInfo.mbc;
+    buff[19] = (romInfo.numRomBanks >> 8) & 0xFF;
+    buff[20] = romInfo.numRomBanks & 0xFF;
   }
 
-  return 19;
+  return 22;
 }
 
 static int handle_delete_rom_command(uint8_t buff[63]) {
@@ -332,12 +340,16 @@ static int handle_delete_rom_command(uint8_t buff[63]) {
     return -1;
   }
 
+  ws2812b_setRgb(16, 5, 0); // Set LED to orange
+
   const uint8_t requestedRom = buff[0];
 
   buff[0] = 0;
   if (RomStorage_DeleteRom(requestedRom) < 0) {
     buff[0] = 1;
   }
+
+  ws2812b_setRgb(0, 0, 0); // Set LED to off
 
   return 1;
 }
@@ -362,6 +374,8 @@ static int handle_request_savegame_download_command(uint8_t buff[63]) {
 static int handle_savegame_transmit_chunk_command(uint8_t buff[63]) {
   uint16_t bank, chunk;
 
+  ws2812b_setRgb(16, 5, 0); // Set LED to orange
+
   if (RomStorage_GetRamDownloadChunk(&buff[4], &bank, &chunk) < 0) {
     return -1;
   }
@@ -370,6 +384,8 @@ static int handle_savegame_transmit_chunk_command(uint8_t buff[63]) {
   buff[1] = bank & 0xFFU;
   buff[2] = (chunk >> 8) & 0xFFU;
   buff[3] = chunk & 0xFFU;
+
+  ws2812b_setRgb(0, 0, 0); // Set LED to off
 
   return 36;
 }
@@ -394,6 +410,8 @@ static int handle_request_savegame_upload_command(uint8_t buff[63]) {
 static int handle_savegame_received_chunk_command(uint8_t buff[63]) {
   uint16_t bank, chunk;
 
+  ws2812b_setRgb(16, 5, 0); // Set LED to orange
+  
   uint32_t count = tud_vendor_read(buff, 36);
   if (count != 36) {
     printf("wrong number of bytes for savegame chunk, got %u\n", count);
@@ -408,6 +426,8 @@ static int handle_savegame_received_chunk_command(uint8_t buff[63]) {
                                         &buff[sizeof(uint16_t) * 2]) < 0) {
     buff[0] = 1;
   }
+
+  ws2812b_setRgb(0, 0, 0); // Set LED to off
 
   return 1;
 }
