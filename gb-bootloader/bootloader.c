@@ -53,6 +53,7 @@
 #define SMEM_ADDR_GAME_MODE_SELECTOR ((UBYTE *)(0xB000))
 #define SMEM_ADDR_GAME_SELECTOR ((UBYTE *)(0xB001))
 #define SMEM_ADDR_GAME_CONTROL ((UBYTE *)(0xB002))
+#define SMEM_ADDR_GAMEBOY_CPU ((UBYTE *)(0xB003))
 
 #define SMEM_GAME_START_MAGIC 42
 
@@ -548,6 +549,8 @@ void scanline_isr(void) {
 
 void main(void) {
   ENABLE_RAM_MBC1;
+
+  *SMEM_ADDR_GAMEBOY_CPU = _cpu;
 
   if (DEVICE_SUPPORTS_COLOR) {
     set_bkg_palette(0, 2, &backgroundpalette[0]);
