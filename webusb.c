@@ -330,7 +330,7 @@ static int handle_request_rom_info_command(uint8_t buff[63]) {
     buff[20] = romInfo.numRomBanks & 0xFF;
   }
 
-  return 22;
+  return 21;
 }
 
 static int handle_delete_rom_command(uint8_t buff[63]) {
