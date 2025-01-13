@@ -79,6 +79,7 @@ volatile union GbRtcUnion __attribute__((section(".noinit."))) g_rtcReal;
 volatile union GbRtcUnion __attribute__((section(".noinit."))) g_rtcLatched;
 uint64_t __attribute__((section(".noinit."))) g_rtcTimestamp;
 
+bool g_hardwareSupportsDoubleSpeed = false;
 uint8_t g_numRoms = 0;
 const uint8_t *g_loadedRomBanks[MAX_BANKS_PER_ROM];
 uint32_t g_loadedDirectAccessRomBanks[MAX_BANKS_PER_ROM];
@@ -391,6 +392,8 @@ void __no_inline_not_in_flash_func(runGbBootloader)(uint8_t *selectedGame,
   usb_shutdown();
 
   g_globalTimestamp = makeTime(&shared_data->timePoint);
+  g_hardwareSupportsDoubleSpeed = ram[0x1003] == 0x11;
+  printf("GB _cpu 0x%X\n", ram[0x1003]);
 
   // hold the gameboy in reset until we have loaded the game
   gpio_put(PIN_GB_RESET, 1);

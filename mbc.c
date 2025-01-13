@@ -185,9 +185,7 @@ void __no_inline_not_in_flash_func(runMbc1Game)() {
   uint8_t rom_bank_high = 0;
   uint8_t rom_bank_low = 1;
   uint8_t ram_bank = 0;
-  uint8_t ram_bank_new = 0;
   bool ram_enabled = 0;
-  bool new_ram_enabled = 0;
   bool mode_select = 0;
   uint16_t rom_banks_mask = _numRomBanks - 1;
 
@@ -215,7 +213,12 @@ void __no_inline_not_in_flash_func(runMbc1Game)() {
 
         switch (addr & 0xE000) {
         case 0x0000:
-          new_ram_enabled = ((data & 0x0F) == 0x0A);
+          ram_enabled = ((data & 0x0F) == 0x0A);
+          if (ram_enabled) {
+            GbDma_EnableSaveRam();
+          } else {
+            GbDma_DisableSaveRam();
+          }
           break;
 
         case 0x2000:
@@ -226,7 +229,8 @@ void __no_inline_not_in_flash_func(runMbc1Game)() {
 
         case 0x4000:
           if (mode_select) {
-            ram_bank_new = data & 0x03;
+            ram_bank = data & 0x03;
+            ram_base = &ram_memory[ram_bank * GB_RAM_BANK_SIZE];
           } else {
             rom_bank_high = data & 0x03;
           }
@@ -257,20 +261,6 @@ void __no_inline_not_in_flash_func(runMbc1Game)() {
           rom_bank = rom_bank_new;
           rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[rom_bank];
         }
-
-        if (ram_enabled != new_ram_enabled) {
-          ram_enabled = new_ram_enabled;
-          if (ram_enabled) {
-            GbDma_EnableSaveRam();
-          } else {
-            GbDma_DisableSaveRam();
-          }
-        }
-
-        if (ram_bank != ram_bank_new) {
-          ram_bank = ram_bank_new;
-          ram_base = &ram_memory[ram_bank * GB_RAM_BANK_SIZE];
-        }
       } else { // read
         if (_vBlankMode) {
           process_vblank_hook(addr);
@@ -282,10 +272,8 @@ void __no_inline_not_in_flash_func(runMbc1Game)() {
 
 void __no_inline_not_in_flash_func(runMbc2Game)() {
   uint8_t rom_bank = 1;
-  uint8_t rom_bank_new = 1;
   uint16_t rom_banks_mask = _numRomBanks - 1;
   bool ram_enabled = 0;
-  bool new_ram_enabled = 0;
 
   rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[1];
 
@@ -320,14 +308,18 @@ void __no_inline_not_in_flash_func(runMbc2Game)() {
         case 0x0000:
         case 0x2000:
           if (addr & 0x100) {
-            rom_bank_new = (data & 0xF);
-            if (rom_bank_new == 0x00)
-              rom_bank_new++;
+            rom_bank = (data & rom_banks_mask);
+            if (rom_bank == 0x00) {
+              rom_bank++;
+            }
+            rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[rom_bank];
           } else {
-            if (data == 0xA)
-              new_ram_enabled = true;
-            else
-              new_ram_enabled = false;
+            ram_enabled = (data == 0xA);
+            if (ram_enabled) {
+              GbDma_EnableSaveRam();
+            } else {
+              GbDma_DisableSaveRam();
+            }
           }
           break;
 
@@ -341,23 +333,6 @@ void __no_inline_not_in_flash_func(runMbc2Game)() {
 
           break;
         }
-
-        rom_bank_new = rom_bank_new & rom_banks_mask;
-
-        if (rom_bank != rom_bank_new) {
-          rom_bank = rom_bank_new;
-          rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[rom_bank];
-        }
-
-        if (ram_enabled != new_ram_enabled) {
-          ram_enabled = new_ram_enabled;
-          if (ram_enabled) {
-            GbDma_EnableSaveRam();
-          } else {
-            GbDma_DisableSaveRam();
-          }
-        }
-
       } else { // read
         if (_vBlankMode) {
           process_vblank_hook(addr);
@@ -369,11 +344,8 @@ void __no_inline_not_in_flash_func(runMbc2Game)() {
 
 void __no_inline_not_in_flash_func(runMbc3Game)() {
   uint8_t rom_bank = 1;
-  uint8_t rom_bank_new = 1;
   uint8_t ram_bank = 0;
-  uint8_t ram_bank_new = 0;
   bool ram_enabled = 0;
-  bool new_ram_enabled = 0;
   uint16_t rom_banks_mask = _numRomBanks - 1;
   uint64_t now, lastSecond = time_us_64();
   bool rtcLatch = false;
@@ -413,17 +385,40 @@ void __no_inline_not_in_flash_func(runMbc3Game)() {
 
         switch (addr & 0xE000) {
         case 0x0000:
-          new_ram_enabled = ((data & 0x0F) == 0x0A);
+          ram_enabled = ((data & 0x0F) == 0x0A);
+          if (ram_enabled) {
+            if (ram_bank & 0x08) {
+              GbDma_EnableRtc();
+            } else {
+              GbDma_EnableSaveRam();
+            }
+          } else {
+            GbDma_DisableSaveRam();
+          }
           break;
 
         case 0x2000:
-          rom_bank_new = (data & 0x7F);
-          if (rom_bank_new == 0x00)
-            rom_bank_new++;
+          rom_bank = (data & rom_banks_mask);
+          if (rom_bank == 0x00) {
+            rom_bank++;
+          }
+          rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[rom_bank];
           break;
 
         case 0x4000:
-          ram_bank_new = data;
+          ram_bank = data;
+          if (ram_bank & 0x08) {
+            GbRtc_ActivateRegister(ram_bank & 0x07);
+            if (ram_enabled) {
+              GbDma_EnableRtc();
+            }
+          } else {
+            ram_base = &ram_memory[(ram_bank & 0x03) * GB_RAM_BANK_SIZE];
+            if (ram_enabled) {
+              GbDma_EnableSaveRam();
+            }
+          }
+
           break;
 
         case 0x6000:
@@ -451,46 +446,13 @@ void __no_inline_not_in_flash_func(runMbc3Game)() {
 
           break;
         }
-
-        rom_bank_new = rom_bank_new & rom_banks_mask;
-
-        if (rom_bank != rom_bank_new) {
-          rom_bank = rom_bank_new;
-          rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[rom_bank];
-        }
-
-        if (ram_enabled != new_ram_enabled) {
-          ram_enabled = new_ram_enabled;
-          if (ram_enabled) {
-            if (ram_bank & 0x08) {
-              GbDma_EnableRtc();
-            } else {
-              GbDma_EnableSaveRam();
-            }
-          } else {
-            GbDma_DisableSaveRam();
-          }
-        }
-
-        if (ram_bank != ram_bank_new) {
-          ram_bank = ram_bank_new;
-          if (ram_bank & 0x08) {
-            GbRtc_ActivateRegister(ram_bank & 0x07);
-            if (ram_enabled) {
-              GbDma_EnableRtc();
-            }
-          } else {
-            ram_base = &ram_memory[(ram_bank & 0x03) * GB_RAM_BANK_SIZE];
-            if (ram_enabled) {
-              GbDma_EnableSaveRam();
-            }
-          }
-        }
       } else { // read
         if (_vBlankMode) {
           process_vblank_hook(addr);
         }
-        detect_speed_change(addr, rom_bank);
+        if (g_hardwareSupportsDoubleSpeed) {
+          detect_speed_change(addr, rom_bank);
+        }
       }
     }
 
@@ -500,11 +462,8 @@ void __no_inline_not_in_flash_func(runMbc3Game)() {
 
 void __no_inline_not_in_flash_func(runMbc5Game)() {
   uint16_t rom_bank = 1;
-  uint16_t rom_bank_new = 1;
   uint8_t ram_bank = 0;
-  uint8_t ram_bank_new = 0;
   bool ram_enabled = 0;
-  bool new_ram_enabled = 0;
   const uint16_t rom_banks_mask = _numRomBanks - 1;
   const uint8_t ram_banks_mask = _numRamBanks - 1;
 
@@ -541,18 +500,28 @@ void __no_inline_not_in_flash_func(runMbc5Game)() {
         switch (addr & 0xF000) {
         case 0x0000:
         case 0x1000:
-          new_ram_enabled = ((data & 0x0F) == 0x0A);
+          ram_enabled = ((data & 0x0F) == 0x0A);
+          if (ram_enabled) {
+            GbDma_EnableSaveRam();
+          } else {
+            GbDma_DisableSaveRam();
+          }
           break;
 
         case 0x2000:
-          rom_bank_new = (rom_bank & 0x0100) | data;
+          rom_bank = (rom_bank & 0x0100) | data;
+          rom_bank = rom_bank & rom_banks_mask;
+          rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[rom_bank];
           break;
 
         case 0x3000:
-          rom_bank_new = (rom_bank & 0x00FF) | ((data << 8) & 0x0100);
+          rom_bank = (rom_bank & 0x00FF) | ((data << 8) & 0x0100);
+          rom_bank = rom_bank & rom_banks_mask;
+          rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[rom_bank];
           break;
         case 0x4000:
-          ram_bank_new = data & 0x0F;
+          ram_bank = data & ram_banks_mask;
+          ram_base = &ram_memory[ram_bank * GB_RAM_BANK_SIZE];
           break;
 
         case 0x6000:
@@ -568,33 +537,13 @@ void __no_inline_not_in_flash_func(runMbc5Game)() {
 
           break;
         }
-
-        rom_bank_new = rom_bank_new & rom_banks_mask;
-        ram_bank_new = ram_bank_new & ram_banks_mask;
-
-        if (rom_bank != rom_bank_new) {
-          rom_bank = rom_bank_new;
-          rom_high_base_flash_direct = g_loadedDirectAccessRomBanks[rom_bank];
-        }
-
-        if (ram_enabled != new_ram_enabled) {
-          ram_enabled = new_ram_enabled;
-          if (ram_enabled) {
-            GbDma_EnableSaveRam();
-          } else {
-            GbDma_DisableSaveRam();
-          }
-        }
-
-        if (ram_bank != ram_bank_new) {
-          ram_bank = ram_bank_new;
-          ram_base = &ram_memory[ram_bank * GB_RAM_BANK_SIZE];
-        }
       } else { // read
         if (_vBlankMode) {
           process_vblank_hook(addr);
         }
-        detect_speed_change(addr, rom_bank);
+        if (g_hardwareSupportsDoubleSpeed) {
+          detect_speed_change(addr, rom_bank);
+        }
       }
     }
   }

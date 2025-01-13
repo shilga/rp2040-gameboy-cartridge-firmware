@@ -19,6 +19,7 @@
 #define A6E4EABE_18C1_4BCB_A021_7C59DEE53104
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #define WS2812_PIN 27
 
@@ -73,6 +74,7 @@ struct RomInfo {
 };
 
 extern uint8_t g_numRoms;
+extern bool g_hardwareSupportsDoubleSpeed;
 
 extern const uint8_t *g_loadedRomBanks[MAX_BANKS_PER_ROM];
 extern uint32_t g_loadedDirectAccessRomBanks[MAX_BANKS_PER_ROM];
