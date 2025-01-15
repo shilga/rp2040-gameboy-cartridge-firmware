@@ -32,7 +32,6 @@
 #include "GlobalDefines.h"
 #include "device/usbd.h"
 #include "usb_descriptors.h"
-#include "ws2812b_spi.h"
 
 #include "BuildVersion.h"
 #include "RomStorage.h"
@@ -289,8 +288,6 @@ static int handle_rom_upload_command(uint8_t buff[63]) {
     return -1;
   }
 
-  ws2812b_setRgb(16, 5, 0); // Set LED to orange
-
   bank = (buff[0] << 8) + buff[1];
   chunk = (buff[2] << 8) + buff[3];
 
@@ -299,8 +296,6 @@ static int handle_rom_upload_command(uint8_t buff[63]) {
       0) {
     buff[0] = 1;
   }
-
-  ws2812b_setRgb(0, 0, 0); // Set LED to off
   
   return 1;
 }
@@ -340,16 +335,12 @@ static int handle_delete_rom_command(uint8_t buff[63]) {
     return -1;
   }
 
-  ws2812b_setRgb(16, 5, 0); // Set LED to orange
-
   const uint8_t requestedRom = buff[0];
 
   buff[0] = 0;
   if (RomStorage_DeleteRom(requestedRom) < 0) {
     buff[0] = 1;
   }
-
-  ws2812b_setRgb(0, 0, 0); // Set LED to off
 
   return 1;
 }
@@ -374,8 +365,6 @@ static int handle_request_savegame_download_command(uint8_t buff[63]) {
 static int handle_savegame_transmit_chunk_command(uint8_t buff[63]) {
   uint16_t bank, chunk;
 
-  ws2812b_setRgb(16, 5, 0); // Set LED to orange
-
   if (RomStorage_GetRamDownloadChunk(&buff[4], &bank, &chunk) < 0) {
     return -1;
   }
@@ -384,8 +373,6 @@ static int handle_savegame_transmit_chunk_command(uint8_t buff[63]) {
   buff[1] = bank & 0xFFU;
   buff[2] = (chunk >> 8) & 0xFFU;
   buff[3] = chunk & 0xFFU;
-
-  ws2812b_setRgb(0, 0, 0); // Set LED to off
 
   return 36;
 }
@@ -409,8 +396,6 @@ static int handle_request_savegame_upload_command(uint8_t buff[63]) {
 
 static int handle_savegame_received_chunk_command(uint8_t buff[63]) {
   uint16_t bank, chunk;
-
-  ws2812b_setRgb(16, 5, 0); // Set LED to orange
   
   uint32_t count = tud_vendor_read(buff, 36);
   if (count != 36) {
@@ -426,8 +411,6 @@ static int handle_savegame_received_chunk_command(uint8_t buff[63]) {
                                         &buff[sizeof(uint16_t) * 2]) < 0) {
     buff[0] = 1;
   }
-
-  ws2812b_setRgb(0, 0, 0); // Set LED to off
 
   return 1;
 }
