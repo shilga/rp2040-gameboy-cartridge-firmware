@@ -238,7 +238,7 @@ static void handle_command(uint8_t command) {
 
 static int handle_device_info_command(uint8_t buff[63]) {
   uint32_t git_sha1 = git_CommitSHA1Short();
-  buff[0] = 3; // featureStep
+  buff[0] = 4; // featureStep
   buff[1] = 1; // hwVersion
   buff[2] = RP2040_GB_CARTRIDGE_VERSION_MAJOR;
   buff[3] = RP2040_GB_CARTRIDGE_VERSION_MINOR;
