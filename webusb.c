@@ -238,7 +238,7 @@ static void handle_command(uint8_t command) {
 
 static int handle_device_info_command(uint8_t buff[63]) {
   uint32_t git_sha1 = git_CommitSHA1Short();
-  buff[0] = 3; // featureStep
+  buff[0] = 4; // featureStep
   buff[1] = 1; // hwVersion
   buff[2] = RP2040_GB_CARTRIDGE_VERSION_MAJOR;
   buff[3] = RP2040_GB_CARTRIDGE_VERSION_MINOR;
@@ -317,12 +317,15 @@ static int handle_request_rom_info_command(uint8_t buff[63]) {
     struct RomInfo romInfo = {};
     if (RomStorage_loadRomInfo(requestedRom, &romInfo))
       return -1;
+
     memcpy(buff, &romInfo.name, 17);
     buff[17] = romInfo.numRamBanks;
     buff[18] = romInfo.mbc;
+    buff[19] = (romInfo.numRomBanks >> 8) & 0xFF;
+    buff[20] = romInfo.numRomBanks & 0xFF;
   }
 
-  return 19;
+  return 21;
 }
 
 static int handle_delete_rom_command(uint8_t buff[63]) {

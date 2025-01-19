@@ -189,6 +189,7 @@ int RomStorage_loadRomInfo(uint32_t rom, struct RomInfo *outRomInfo) {
 
       memcpy(outRomInfo->name, lfsInfo.name, 16);
       outRomInfo->name[16] = 0;
+      outRomInfo->numRomBanks = _romInfoFile.numBanks;
       outRomInfo->firstBank = RomBankToPointer(_romInfoFile.banks[0]);
       outRomInfo->numRamBanks =
           GameBoyHeader_readRamBankCount(outRomInfo->firstBank);
