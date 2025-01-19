@@ -281,7 +281,7 @@ static int handle_new_rom_command(uint8_t buff[63]) {
 
 static int handle_rom_upload_command(uint8_t buff[63]) {
   uint16_t bank, chunk;
-  
+
   uint32_t count = tud_vendor_read(buff, 36);
   if (count != 36) {
     printf("wrong number of bytes for rom chunk\n");
@@ -296,7 +296,7 @@ static int handle_rom_upload_command(uint8_t buff[63]) {
       0) {
     buff[0] = 1;
   }
-  
+
   return 1;
 }
 
@@ -317,7 +317,7 @@ static int handle_request_rom_info_command(uint8_t buff[63]) {
     struct RomInfo romInfo = {};
     if (RomStorage_loadRomInfo(requestedRom, &romInfo))
       return -1;
-    
+
     memcpy(buff, &romInfo.name, 17);
     buff[17] = romInfo.numRamBanks;
     buff[18] = romInfo.mbc;
@@ -396,7 +396,7 @@ static int handle_request_savegame_upload_command(uint8_t buff[63]) {
 
 static int handle_savegame_received_chunk_command(uint8_t buff[63]) {
   uint16_t bank, chunk;
-  
+
   uint32_t count = tud_vendor_read(buff, 36);
   if (count != 36) {
     printf("wrong number of bytes for savegame chunk, got %u\n", count);
