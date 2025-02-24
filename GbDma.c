@@ -57,7 +57,7 @@ struct DmaCommand {
 
 /* clang-format off */
 
-static volatile uint32_t LOWER_ROM_READ_DMA_CTRL = (DMA_CHANNEL_ROM_LOWER_REQUESTOR << DMA_CH2_CTRL_TRIG_CHAIN_TO_LSB) | DMA_CH2_CTRL_TRIG_HIGH_PRIORITY_BITS | DMA_CH2_CTRL_TRIG_EN_BITS; 
+static volatile uint32_t LOWER_ROM_READ_DMA_CTRL = (DMA_CHANNEL_ROM_LOWER_REQUESTOR << DMA_CH2_CTRL_TRIG_CHAIN_TO_LSB) | DMA_CH2_CTRL_TRIG_HIGH_PRIORITY_BITS | DMA_CH2_CTRL_TRIG_EN_BITS | (DMA_CH2_CTRL_TRIG_TREQ_SEL_VALUE_PERMANENT << DMA_CH2_CTRL_TRIG_TREQ_SEL_LSB); 
 static struct DmaCommand LOWER_ROM_READ[] = {
   { &LOWER_ROM_READ_DMA_CTRL, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].al1_ctrl) }, // load the settings for this transfer into the MEMORY_ACCESOR_DMA control register
   { &_txFifoWriteData, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].write_addr) }, // load the addr of the tx-fifo of the write data PIO-SM into the write register of MEMORY_ACCESSOR_DMA
@@ -66,7 +66,7 @@ static struct DmaCommand LOWER_ROM_READ[] = {
   { NULL, NULL}
 };
 
-static volatile uint32_t RAM_READ_DMA_CTRL = (DMA_CHANNEL_RAM_READ_REQUESTOR << DMA_CH2_CTRL_TRIG_CHAIN_TO_LSB) | DMA_CH2_CTRL_TRIG_HIGH_PRIORITY_BITS | DMA_CH2_CTRL_TRIG_EN_BITS; 
+static volatile uint32_t RAM_READ_DMA_CTRL = (DMA_CHANNEL_RAM_READ_REQUESTOR << DMA_CH2_CTRL_TRIG_CHAIN_TO_LSB) | DMA_CH2_CTRL_TRIG_HIGH_PRIORITY_BITS | DMA_CH2_CTRL_TRIG_EN_BITS | (DMA_CH2_CTRL_TRIG_TREQ_SEL_VALUE_PERMANENT << DMA_CH2_CTRL_TRIG_TREQ_SEL_LSB);
 static struct DmaCommand RAM_READ[] = {
   { &RAM_READ_DMA_CTRL, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].al1_ctrl) }, // load the settings for this transfer into the MEMORY_ACCESOR_DMA control register
   { &_txFifoWriteData, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].write_addr) }, // load the addr of the tx-fifo of the write data PIO-SM into the write register of MEMORY_ACCESSOR_DMA
@@ -75,7 +75,7 @@ static struct DmaCommand RAM_READ[] = {
   { NULL, NULL}
 };
 
-static volatile uint32_t RAM_WRITE_DMA_CTRL = (DMA_CHANNEL_RAM_WRITE_REQUESTOR << DMA_CH2_CTRL_TRIG_CHAIN_TO_LSB) | DMA_CH2_CTRL_TRIG_HIGH_PRIORITY_BITS | DMA_CH2_CTRL_TRIG_EN_BITS | (DREQ_PIO1_RX3 << DMA_CH2_CTRL_TRIG_TREQ_SEL_LSB); 
+static volatile uint32_t RAM_WRITE_DMA_CTRL = (DMA_CHANNEL_RAM_WRITE_REQUESTOR << DMA_CH2_CTRL_TRIG_CHAIN_TO_LSB) | DMA_CH2_CTRL_TRIG_HIGH_PRIORITY_BITS | DMA_CH2_CTRL_TRIG_EN_BITS | (DREQ_PIO1_RX3 << DMA_CH2_CTRL_TRIG_TREQ_SEL_LSB);
 static struct DmaCommand RAM_WRITE[] = {
   { &RAM_WRITE_DMA_CTRL, &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].al1_ctrl) }, // setup MEMORY_ACCESSOR_DMA for this write to RAM transaction
   { &(pio1->rxf[SMC_GB_RAM_WRITE]), &(dma_hw->ch[DMA_CHANNEL_MEMORY_ACCESSOR].write_addr) }, // load the addr from the rx-fifo of the PIO-SM triggering this transfer into the write addr of MEMORY_ACCESSOR_DMA
