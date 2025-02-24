@@ -75,3 +75,8 @@ uint8_t GameBoyHeader_readMbc(const uint8_t *gameptr) {
 
   return mbc;
 }
+
+bool GameBoyHeader_hasColorSupport(const uint8_t *gameptr) {
+  const uint8_t cgbFlag = gameptr[0x0143];
+  return (cgbFlag & 0x80) == 0x80;
+}

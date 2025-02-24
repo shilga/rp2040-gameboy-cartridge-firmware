@@ -68,14 +68,21 @@ void loadGame(uint8_t mode) {
   mbc = GameBoyHeader_readMbc(gameptr);
   _hasRtc = GameBoyHeader_hasRtc(gameptr);
 
+  const bool hasGbcFlag = GameBoyHeader_hasColorSupport(gameptr);
+
+  if (!hasGbcFlag) {
+    g_hardwareSupportsDoubleSpeed = false;
+  }
+
   _numRomBanks = 1 << (gameptr[0x0148] + 1);
   _vBlankMode = mode;
   _numRamBanks = g_loadedRomInfo.numRamBanks;
 
-  printf("MBC:       %d\n", mbc);
-  printf("name:      %s\n", (const char *)&gameptr[0x134]);
-  printf("rom banks: %d\n", _numRomBanks);
-  printf("ram banks: %d\n", g_loadedRomInfo.numRamBanks);
+  printf("MBC:         %d\n", mbc);
+  printf("name:        %s\n", (const char *)&gameptr[0x134]);
+  printf("rom banks:   %d\n", _numRomBanks);
+  printf("ram banks:   %d\n", g_loadedRomInfo.numRamBanks);
+  printf("hasGbcFlags: %d\n", hasGbcFlag);
 
   if (_hasRtc) {
     restoreRtcFromFile(&g_loadedRomInfo);
