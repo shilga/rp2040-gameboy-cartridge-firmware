@@ -24,6 +24,7 @@
 #define WS2812_PIN 27
 
 #define PIN_GB_RESET 26
+#define PIN_GB_BUS_EN 29
 
 #define SMC_GB_MAIN 0
 #define SMC_GB_DETECT_A14 1

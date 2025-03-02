@@ -133,8 +133,14 @@ int main() {
   printf("SSI->BAUDR: %x\n", *((uint32_t *)(XIP_SSI_BASE + SSI_BAUDR_OFFSET)));
 
   gpio_init(PIN_GB_RESET);
-  gpio_set_dir(PIN_GB_RESET, true);
+  if (gpio_get(PIN_GB_RESET)) {
+    printf("V1.3 HW\n");
+    gpio_init(PIN_GB_BUS_EN);
+    gpio_put(PIN_GB_BUS_EN, 1);
+    gpio_set_dir(PIN_GB_BUS_EN, true);
+  }
   gpio_put(PIN_GB_RESET, 1);
+  gpio_set_dir(PIN_GB_RESET, true);
 
   // pio_gpio_init(pio1, 28);
   // gpio_init(PIN_UART_TX);
