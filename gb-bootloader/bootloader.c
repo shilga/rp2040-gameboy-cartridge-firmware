@@ -190,14 +190,19 @@ void resetHighlights(void) {
 }
 
 void renderGamelist(uint8_t first, uint8_t selected) {
-  gotoxy(0, 0);
   const char *spacer_selected = selected < 9 ? " " : "";
   const char *spacer_games = s_GamesCount < 9 ? " " : "";
 
   char *pRomNames = s_sharedData->rom_names;
 
-  printf("***  Games %s%d/%s%d ***", spacer_selected, selected + 1,
-         spacer_games, s_GamesCount);
+  gotoxy(0, 0);
+
+  if (s_GamesCount == 0) {
+    printf("***    Games     ***");
+  } else {
+    printf("***  Games %s%d/%s%d ***", spacer_selected, selected + 1,
+           spacer_games, s_GamesCount);
+  }
 
   if (s_GamesCount != 0) {
     // loop through all game titles and display them
